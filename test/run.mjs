@@ -134,6 +134,7 @@ try {
 
   // ---------- 6. views, pagination, zoom ----------
   section('views');
+  await check('Page view honours backslash escapes the engine emits (1. / ( / , / *)', () => E(`(function(){ var B=String.fromCharCode(92), N=String.fromCharCode(10); src.value='## 1'+B+'. The risk'+B+', stated '+B+'(precisely'+B+')'+N+N+'A '+B+'*literal'+B+'* star and 5 '+B+'< 6.'+N; setView('render'); var h=document.querySelector('#paper h2'), p=document.querySelector('#paper p'); return !!h && h.textContent==='1. The risk, stated (precisely)' && !!p && p.textContent==='A *literal* star and 5 < 6.' && !document.querySelector('#paper em'); })()`));
   await E(`(function(){var d='# Long\\n\\n'; for(var i=1;i<=18;i++){ d+='## Section '+i+'\\n\\n'+'Body text filler to occupy vertical space across pages. '.repeat(4)+'\\n\\n- a\\n- b\\n\\n'; } d+='\\\\newpage\\n\\n## Forced\\n\\nafter break\\n'; newTab(d,'long.md');})()`); await settle();
   await check('Source view switches the engine to markdown mode', () => E(`(function(){setView('source'); return !editor.isWysiwygMode() && $('#editPane').style.display!=='none';})()`));
   await check('Write view switches back to WYSIWYG', () => E(`(function(){setView('write'); return editor.isWysiwygMode();})()`));

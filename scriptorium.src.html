@@ -984,6 +984,9 @@ function inline(s){
   const codes=[]; s=s.replace(/`([^`]+)`/g,(m,c)=>{codes.push(c);return ` C${codes.length-1} `;});
   // protect inline math $...$
   const maths=[]; s=s.replace(/\$([^$\n]+)\$/g,(m,c)=>{maths.push(c);return ` M${maths.length-1} `;});
+  // backslash escapes (CommonMark 2.4) - the WYSIWYG engine emits "1\." / "\(" / "\," when it serialises;
+  // hold them so the emphasis/link passes can't see them, then restore the literal character at the end
+  const escs=[]; s=s.replace(/\\([\\`*_{}\[\]()#+\-.!,|~<>$"'])/g,(m,c)=>{escs.push(c);return `\u0001${escs.length-1}\u0001`;});
   // images  ![alt](src)
   s=s.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g,(m,a,src,ti)=>`<img src="${src}" alt="${escHtml(a)}"${ti?` title="${escHtml(ti)}"`:''}>`);
   // links  [text](href)
@@ -995,6 +998,7 @@ function inline(s){
   // restore math + code
   s=s.replace(/ M(\d+) /g,(m,i)=>renderMath(maths[+i],false));
   s=s.replace(/ C(\d+) /g,(m,i)=>`<code>${escHtml(codes[+i])}</code>`);
+  s=s.replace(/(\d+)/g,(m,i)=>escHtml(escs[+i]));   // restore backslash-escaped literals
   return s;
 }
 /* Sanitise rendered HTML before it hits innerHTML: keep the inline style/colour/font spans that are the whole

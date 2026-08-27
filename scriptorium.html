@@ -3273,7 +3273,7 @@ pre[class*="language-"] {
       <span id="stCounts">0 words · 0 chars</span>
       <span id="stView">split</span>
       <span id="stControl" title="Remote control — lets Claude Code (or any agent) drive this editor through the local helper. Lights up when connected; flashes when a command runs." style="display:none">remote ○</span>
-      <span id="stBuild" title="Build timestamp — if this is not tonight, you are on a cached copy: close the window (Super+W) and reopen it">build 2026-08-26 23:23</span>
+      <span id="stBuild" title="Build timestamp — if this is not tonight, you are on a cached copy: close the window (Super+W) and reopen it">build 2026-08-27 08:10</span>
     </div>
   </div>
 </div>
@@ -7788,7 +7788,7 @@ globalThis["mermaid"] = globalThis.__esbuild_esm_mermaid_nm["mermaid"].default;
 /* Optional local overrides from scriptorium.local.js (gitignored): {name, identity, endpoint}.
    Declared FIRST: several functions below read it during page load. */
 const LOCAL = (typeof window.SCRIPTORIUM_LOCAL==='object' && window.SCRIPTORIUM_LOCAL) || {};
-window.SCRIPTORIUM_BUILD='2026-08-26 23:23'; try{ console.log('Scriptorium build 2026-08-26 23:23'); }catch(e){}
+window.SCRIPTORIUM_BUILD='2026-08-27 08:10'; try{ console.log('Scriptorium build 2026-08-27 08:10'); }catch(e){}
 /* KaTeX + Mermaid are bundled (2026-08-26) — the renderer below used to advertise them and ship neither. */
 try{ if(window.mermaid) window.mermaid.initialize({startOnLoad:false,theme:'neutral'}); }catch(e){}
 /* raw AI exchange trace — the last few requests/responses, for debugging what a model really sent.
@@ -8006,6 +8006,9 @@ function inline(s){
   const codes=[]; s=s.replace(/`([^`]+)`/g,(m,c)=>{codes.push(c);return ` C${codes.length-1} `;});
   // protect inline math $...$
   const maths=[]; s=s.replace(/\$([^$\n]+)\$/g,(m,c)=>{maths.push(c);return ` M${maths.length-1} `;});
+  // backslash escapes (CommonMark 2.4) - the WYSIWYG engine emits "1\." / "\(" / "\," when it serialises;
+  // hold them so the emphasis/link passes can't see them, then restore the literal character at the end
+  const escs=[]; s=s.replace(/\\([\\`*_{}\[\]()#+\-.!,|~<>$"'])/g,(m,c)=>{escs.push(c);return `\u0001${escs.length-1}\u0001`;});
   // images  ![alt](src)
   s=s.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g,(m,a,src,ti)=>`<img src="${src}" alt="${escHtml(a)}"${ti?` title="${escHtml(ti)}"`:''}>`);
   // links  [text](href)
@@ -8017,6 +8020,7 @@ function inline(s){
   // restore math + code
   s=s.replace(/ M(\d+) /g,(m,i)=>renderMath(maths[+i],false));
   s=s.replace(/ C(\d+) /g,(m,i)=>`<code>${escHtml(codes[+i])}</code>`);
+  s=s.replace(/(\d+)/g,(m,i)=>escHtml(escs[+i]));   // restore backslash-escaped literals
   return s;
 }
 /* Sanitise rendered HTML before it hits innerHTML: keep the inline style/colour/font spans that are the whole
