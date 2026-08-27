@@ -175,7 +175,7 @@ scriptorium-ctl replace_selection 'reworked text' # rework exactly that
 scriptorium-ctl render                            # switch to Page view, ready to print
 ```
 
-Commands: `ping get_state get_document get_selection set_document apply_edit append_text replace_all
+Commands: `ping get_state dump_state get_document get_selection set_document apply_edit append_text replace_all
 replace_selection open_tab list_tabs switch_tab set_view set_font render print export_html save`. It's the
 same command core the in-page AI uses. localhost only; a status-bar light shows when a driver is connected.
 

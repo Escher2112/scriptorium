@@ -83,6 +83,7 @@ Every command returns `{ok, result, error}`. `result` is a string for document o
 |---|---|---|
 | `ping` | — | liveness: `{build, tab, tabs, view}` |
 | `get_state` | — | `{tab, activeTab, tabs[], view, dirty, words, chars, build}` |
+| `dump_state` | `{keys?: [tabs\|chats\|trace\|settings\|assistant], include_identity?}` | the app's **own saved state** from its storage: tab contents, chat history, assistant trace, settings — for recovery/debugging without touching browser files (persona text only with `include_identity:true`) |
 | `get_document` | — | the current tab's full Markdown |
 | `read_document` | — | same as get_document (tool-name alias) |
 | `get_selection` | — | the text the user currently has highlighted (empty if none) |

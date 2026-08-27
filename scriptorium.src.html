@@ -2038,6 +2038,13 @@ async function docCommand(cmd, a){
   const okStr=s=>({ok:!/^ERROR/.test(String(s)), result:String(s), error:/^ERROR/.test(String(s))?String(s):undefined});
   switch(cmd){
     case 'ping': return {ok:true, result:{build:window.SCRIPTORIUM_BUILD, tab:curName, tabs:tabs.length, view}};
+    case 'dump_state': { const want=(a&&Array.isArray(a.keys)&&a.keys.length)?a.keys:['tabs','chats','trace','settings','assistant']; const J=k=>{ try{ return JSON.parse(localStorage.getItem(k)); }catch(e){ return localStorage.getItem(k); } }; const out={};   /* the app answers about its OWN storage — replaces any file-level reader (SEC-1) */
+      if(want.includes('tabs')) out.tabs={active:+(localStorage.getItem('scr_active')||0), list:J('scr_tabs')||[]};
+      if(want.includes('chats')) out.chats={active:+(localStorage.getItem('scr_chat_active')||0), list:J('scr_chats')||[]};
+      if(want.includes('trace')) out.trace=J('scr_ai_trace')||[];
+      if(want.includes('settings')) out.settings={theme:localStorage.getItem('scr_theme'),ambience:localStorage.getItem('scr_amb'),crt:J('scr_crt'),view:localStorage.getItem('scr_view'),zoom:localStorage.getItem('scr_zoom'),lite:localStorage.getItem('scr_lite'),zen:localStorage.getItem('scr_zen'),control:localStorage.getItem('scr_control'),search_url:localStorage.getItem('scr_search_url')};
+      if(want.includes('assistant')) out.assistant=Object.assign({name:localStorage.getItem('scr_ai_name'),endpoint:localStorage.getItem('scr_ai_endpoint'),model:localStorage.getItem('scr_ai_model'),identity_chars:(localStorage.getItem('scr_ai_identity')||'').length},(a&&a.include_identity)?{identity:localStorage.getItem('scr_ai_identity')}:{});
+      return {ok:true, result:out}; }
     case 'get_state': return {ok:true, result:{tab:curName, activeTab, tabs:tabs.map(t=>t.name), view, dirty, words:(src.value.trim()?src.value.trim().split(/\s+/).length:0), chars:src.value.length, build:window.SCRIPTORIUM_BUILD}};
     case 'get_document': return {ok:true, result:src.value};
     case 'get_selection': return {ok:true, result:(lastSel&&lastSel.tab===activeTab)?lastSel.text:(editor.getSelectedText()||'')};

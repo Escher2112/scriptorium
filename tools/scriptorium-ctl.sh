@@ -27,7 +27,7 @@ post(){ curl -s -X POST "$H/control/push" -H 'Content-Type: application/json' -d
         | "$PY" -c 'import json,sys;r=json.load(sys.stdin);print(r.get("result") if r.get("ok") else "ERROR: "+str(r.get("error")), file=(sys.stderr if not r.get("ok") else sys.stdout));sys.exit(0 if r.get("ok") else 1)'; }
 case "$cmd" in
   status)   curl -s "$H/control/status" ; echo ;;
-  ping|get_document|get_selection|get_state|list_tabs|render|print|export_html|save)
+  ping|get_document|get_selection|get_state|dump_state|list_tabs|render|print|export_html|save)
             post "{\"cmd\":\"$cmd\",\"timeout\":$TO}" ;;
   set_view) post "{\"cmd\":\"set_view\",\"args\":{\"view\":\"${1:?view: write|source|render}\"},\"timeout\":$TO}" ;;
   switch_tab) post "{\"cmd\":\"switch_tab\",\"args\":{\"index\":${1:?index}},\"timeout\":$TO}" ;;

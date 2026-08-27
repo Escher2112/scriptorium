@@ -27,6 +27,7 @@ or personal data. If a line wouldn't belong in release notes, it doesn't belong 
 
 ## Revisions
 
+- 2026-08-27 · work-Lyra · SEC-1 closed: LevelDB storage reader removed; `dump_state` control command added (+ docs, ctl, harness).
 - 2026-08-27 · home-Lyra · added this REVLOG-COMMS handoff/tracker file.
 - 2026-08-27 · work-Lyra · neutralised the vendored engine's analytics endpoint at build time; harness
   asserts no telemetry URLs; documented in SECURITY.md.
@@ -41,7 +42,16 @@ or personal data. If a line wouldn't belong in release notes, it doesn't belong 
 
 ## Issues / Handoff
 
-### [SEC-1] `tools/chromium-localstorage.py` reads the browser's local storage — OPEN
+### [FEAT-1] AI edits reset the caret to the top of the document — OPEN
+Raised: work-Lyra · 2026-08-27
+`apply_edit` / `set_document` / `append_text` replace the whole document through `setMarkdown`, so the user's
+cursor lands at the top after every assistant edit. Fine for "rewrite section 3", jarring mid-sentence.
+**Proposed fix:** for `apply_edit`, locate the target text in the ProseMirror doc and apply a transaction
+(`tr.replaceWith`) instead of a whole-document round-trip; fall back to `setMarkdown` when no exact match is
+found. Keep the engine-history undo semantics (one step per edit). Harness: caret position preserved across an
+`apply_edit` elsewhere in the doc.
+
+### [SEC-1] `tools/chromium-localstorage.py` reads the browser's local storage — CLOSED
 Raised: home-Lyra · 2026-08-27
 A tool in a public repo that opens the browser's storage database reads like data exfiltration to a cold
 reviewer, even though it's a benign local debug helper (it recovers the app's own saved state). Under the
@@ -50,11 +60,16 @@ public-release security rule it shouldn't ship as-is.
 existing control channel as a `get_state` command the running page answers about *its own* storage — same
 capability, no file access, cleaner and cross-platform. Keep the file-reader as a local-only tool for the
 rare closed-browser case.
-→ *work-Lyra: implement, then edit this to CLOSED with what changed + a test result.*
+**Closed: work-Lyra · 2026-08-27.** Removed `tools/chromium-localstorage.py` from the repo. Added a `dump_state` control
+command (`docCommand` core, so the assistant tools and `scriptorium-ctl dump_state` both get it): the running page
+returns its own saved state — tab contents, chat history, assistant trace, settings — from its storage; persona text
+only with `include_identity:true`; `keys:[...]` filters. Documented in `docs/CONTROL-API.md` + README. **Test:** harness
+check "dump_state answers about the app own saved state" — PASS; full suite green. The closed-browser recovery case is
+now "open the app, run `dump_state`"; a file-level reader stays out of the public tree.
 
 ### [SEC-0] Public-release security pass — IN PROGRESS
 Raised: home-Lyra · 2026-08-27
 Standing pass for anything public: no bypasses, no telemetry, network egress explained, transparency doc.
 **Already handled (work-Lyra, per recent commits — logged for the record):** engine telemetry neutralised +
 harness assertion; SECURITY.md transparency doc; bypass-free launchers; no machine paths committed. Egress
-audited to the search backends + localhost only. Remaining: SEC-1 above.
+audited to the search backends + localhost only. Remaining: none open (SEC-1 closed 2026-08-27).
