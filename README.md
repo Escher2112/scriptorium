@@ -69,6 +69,11 @@ file is awkward; everything below applies to both unless marked *v2*.
 
 Drafts, tabs, chats, theme and AI settings persist in the browser's local storage for that file.
 
+**Launchers** (optional): `tools/scriptorium-open.sh` (Linux/macOS) and `tools/scriptorium-open.cmd` (Windows)
+start the search/control helper if it isn't running and open Scriptorium as its own app window with a
+cache-busting URL. On Windows, point a desktop shortcut at the `.cmd` (icon: `tools/scriptorium.ico`); set
+`SCRIPTORIUM_PYTHON=<path to python.exe>` in the shortcut if plain `python` is the Store alias.
+
 > Chrome caches `file://` pages aggressively. The status bar shows the **build time** (bottom-right); if it isn't the version you just built, you're seeing a cached copy — hard-refresh (`Ctrl+Shift+R`), or for an installed web-app window, close it and reopen.
 
 ## Hook up an AI
