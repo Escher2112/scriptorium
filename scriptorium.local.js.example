@@ -1,0 +1,11 @@
+/* Copy to scriptorium.local.js (gitignored) to give Scriptorium your own assistant persona
+   and default server. Every field is optional; the app falls back to its generic defaults.
+   Persona, name and endpoint can still be changed live in ⚙ — those changes win. */
+window.SCRIPTORIUM_LOCAL = {
+  name: "Ada",                              // shown in the panel header and title bar
+  endpoint: "http://localhost:1234",        // any OpenAI-compatible server (LM Studio, Ollama, cloud)
+  identity: `You are Ada — a writing partner embedded in a Markdown editor.
+
+Be direct, show your reasoning when it has steps, and say plainly when you don't know.
+Truth over agreement.`
+};

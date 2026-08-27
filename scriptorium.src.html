@@ -1,0 +1,2193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Scriptorium</title>
+<style>
+/* ============================================================================
+   SCRIPTORIUM — a Markdown report writer, built to the Rialto design system
+   (the § refs throughout cite its sections). Laws: colour is never the only channel · motion goes
+   first · the backdrop only breathes · Lite mode ships · restraint under
+   maximalism · one source of truth. §12: cathedral around a clean sheet of
+   paper — Tron on the chrome, crisp ink on the page.
+   ========================================================================== */
+
+/* ---- tokens: the §2 default :root (fallback before JS derives from a theme) */
+:root{
+  --bg:#0a0713; --bg2:#120d1e; --bg3:#1a1330; --line:#2e2344;
+  --fg:#e9e8ee; --dim:#8a8894; --accent:#ffab40; --accent2:#ff6b1a;
+  --hi:#8fd0ff; --deep:#3a1a5c; --danger:#bf616a; --core:#eaf6ff;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Avenir Next",Seravek,"Segoe UI",system-ui,sans-serif;
+  /* CRT */
+  --crt-scan:0; --crt-scan-gap:3px; --crt-vignette:.40; --crt-glare:.10; --crt-bloom:.30; --crt-flicker:0;
+  /* the page ink — masterclass §12: paper is near-white, independent of theme */
+  --paper:#f7f6f2; --paper-ink:#1a1a20; --paper-dim:#5b5b66; --paper-line:#d8d6cf; --paper-accent:#7a4a00;
+}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{
+  background:var(--bgGrad,var(--bg)); color:var(--fg);
+  font:15px/1.55 var(--sans); overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+  display:flex; flex-direction:column;
+}
+/* whole-screen vignette (§6) — inert depth, above content */
+body::after{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:50;
+  background:radial-gradient(135% 125% at 50% 42%, transparent 60%, rgba(0,0,0,.38) 96%);
+}
+/* ambient WebGL canvas (§7) — z0, only breathes */
+#amb{position:fixed;inset:0;z-index:0;width:100%;height:100%}
+/* CRT overlay (§8) — on the FRAME, scanlines masked off the editor column */
+#crt{position:fixed;inset:0;z-index:3;pointer-events:none;display:none}
+body.fx-screen #crt{display:block}
+#crt>*{position:absolute;inset:0}
+#crtFx{background:
+  radial-gradient(125% 125% at 50% 50%, transparent 55%, rgba(0,0,0,var(--crt-vignette)) 100%),
+  radial-gradient(80% 60% at 28% 16%, rgba(255,255,255,var(--crt-glare)), transparent 60%)}
+#crtBloom{box-shadow:
+  inset 0 0 90px  color-mix(in srgb, var(--accent) calc(var(--crt-bloom)*34%), transparent),
+  inset 0 0 240px color-mix(in srgb, var(--accent) calc(var(--crt-bloom)*14%), transparent)}
+/* scanlines (§8) — luminance only; masked off the page column at runtime (§12) */
+#crtScan{mix-blend-mode:multiply;background:repeating-linear-gradient(0deg,
+  transparent, transparent calc(var(--crt-scan-gap) - 1px),
+  rgba(0,0,0,var(--crt-scan)) calc(var(--crt-scan-gap) - 1px),
+  rgba(0,0,0,var(--crt-scan)) var(--crt-scan-gap))}
+#crtFlick{background:rgba(200,225,255,.5);mix-blend-mode:screen;opacity:0;animation:crtflick .13s steps(2,end) infinite}
+@keyframes crtflick{0%,100%{opacity:0}50%{opacity:calc(var(--crt-flicker)*.05)}}
+
+/* ---- glass recipe (§6) --------------------------------------------------- */
+.glass{
+  background:color-mix(in srgb, var(--bg2) 82%, transparent);
+  -webkit-backdrop-filter:blur(14px) saturate(1.25); backdrop-filter:blur(14px) saturate(1.25);
+  border:1px solid var(--line);
+}
+
+/* ---- chrome: title bar --------------------------------------------------- */
+#app{position:relative;z-index:1;display:flex;flex-direction:column;height:100%;min-height:0}
+#titlebar{
+  display:flex;align-items:center;gap:14px;padding:8px 14px;
+  border-bottom:1px solid var(--line);
+  background:color-mix(in srgb, var(--bg2) 84%, transparent);
+  -webkit-backdrop-filter:blur(14px) saturate(1.25); backdrop-filter:blur(14px) saturate(1.25);
+}
+.wordmark{font:600 15px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--hi);
+  text-shadow:0 0 18px color-mix(in srgb,var(--hi) 40%,transparent);white-space:nowrap}
+.wordmark small{color:var(--dim);letter-spacing:.14em;font-size:9px;margin-left:8px}
+#docname{flex:1;min-width:0;font:13px var(--mono);letter-spacing:.04em;color:var(--dim);
+  text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#docname .dirty{color:var(--accent)}
+.tb-right{display:flex;align-items:center;gap:6px}
+
+/* ---- buttons / chips ----------------------------------------------------- */
+button{font:inherit;color:var(--fg);background:transparent;border:1px solid transparent;cursor:pointer}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:8px;
+  border:1px solid var(--line);background:color-mix(in srgb,var(--bg3) 60%,transparent);
+  color:var(--fg);font:12px var(--mono);letter-spacing:.04em;
+  transition:border-color .15s, box-shadow .15s, background .15s, color .15s;
+  white-space:nowrap;
+}
+.btn:hover{border-color:var(--accent);color:var(--core)}
+.btn:active{transform:translateY(1px)}
+.btn.primary{border-color:color-mix(in srgb,var(--accent) 60%,var(--line));
+  background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--core)}
+.btn.on{border-color:var(--accent);
+  box-shadow:0 0 12px color-mix(in srgb,var(--accent) 35%,transparent);color:var(--core)}
+.btn.icon{padding:6px 9px}
+.sep{width:1px;height:22px;background:var(--line);margin:0 3px}
+/* Tron outline icon set — stroke inherits currentColor so it glows on hover */
+.tbtn svg,.btn svg{stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto;overflow:visible}
+.tbtn svg{width:18px;height:18px}
+.btn svg{width:15px;height:15px}
+.btn:hover svg,.tbtn:hover svg{filter:drop-shadow(0 0 4px color-mix(in srgb,var(--accent) 60%,transparent))}
+
+/* ---- toolbar ------------------------------------------------------------- */
+#toolbar{
+  display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:6px 12px;
+  border-bottom:1px solid var(--line);
+  background:color-mix(in srgb, var(--bg2) 70%, transparent);
+  -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px);
+}
+#toolbar .grp{display:flex;align-items:center;gap:3px}
+.tbtn{width:30px;height:28px;border-radius:6px;border:1px solid transparent;
+  display:inline-flex;align-items:center;justify-content:center;
+  font:13px var(--mono);color:var(--dim);transition:all .15s}
+.tbtn:hover{border-color:var(--accent);color:var(--core);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.tbtn b{font-weight:800}.tbtn i{font-style:italic}.tbtn s{text-decoration:line-through}
+select,input[type=text]{font:12px var(--mono);color:var(--fg);background:var(--bg3);
+  border:1px solid var(--line);border-radius:6px;padding:5px 7px;letter-spacing:.03em}
+select:focus,input:focus{outline:none;border-color:var(--accent);
+  box-shadow:0 0 10px color-mix(in srgb,var(--accent) 30%,transparent)}
+input[type=color]{width:30px;height:28px;padding:2px;border:1px solid var(--line);
+  border-radius:6px;background:var(--bg3);cursor:pointer}
+
+/* ---- tab strip (multi-doc) ----------------------------------------------- */
+#tabbar{display:flex;align-items:flex-end;gap:3px;padding:5px 10px 0;overflow-x:auto;
+  border-bottom:1px solid var(--line);background:color-mix(in srgb, var(--bg2) 55%, transparent);
+  -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px)}
+#tabbar::-webkit-scrollbar{height:0}
+.tab{display:inline-flex;align-items:center;gap:7px;padding:6px 9px 7px;border-radius:8px 8px 0 0;
+  border:1px solid var(--line);border-bottom:none;background:color-mix(in srgb,var(--bg3) 35%,transparent);
+  font:11px var(--mono);letter-spacing:.03em;color:var(--dim);cursor:pointer;white-space:nowrap;
+  max-width:200px;transition:color .15s,background .15s,border-color .15s;position:relative;top:1px}
+.tab:hover{color:var(--core)}
+.tab.on{background:color-mix(in srgb,var(--accent) 14%,transparent);border-color:var(--accent);color:var(--core);
+  box-shadow:0 0 12px color-mix(in srgb,var(--accent) 22%,transparent)}
+.tab .nm{overflow:hidden;text-overflow:ellipsis}
+.tab .dot{width:6px;height:6px;border-radius:999px;background:var(--accent);flex:0 0 auto;display:none;
+  box-shadow:0 0 6px var(--accent)}
+.tab.dirty .dot{display:inline-block}
+.tab .x{opacity:.45;font-size:12px;line-height:1;padding:0 1px;flex:0 0 auto}
+.tab .x:hover{opacity:1;color:var(--danger)}
+.tabadd{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);color:var(--dim);
+  background:color-mix(in srgb,var(--bg3) 40%,transparent);font-size:16px;line-height:1;cursor:pointer;
+  flex:0 0 auto;margin-bottom:2px;transition:all .15s}
+.tabadd:hover{border-color:var(--accent);color:var(--core)}
+/* ---- main work area ------------------------------------------------------ */
+#work{flex:1;display:flex;min-height:0;position:relative}
+.pane{flex:1;min-width:0;height:100%;overflow:auto;position:relative}
+/* (#editPane hosts the Toast UI engine — skinned in #tuiSkin) */
+/* the SACRED page (§12): near-white paper, crisp ink, NO plasma/scanlines over words */
+/* block layout (NOT flex) so the page grows to full content height and the pane
+   scrolls — a flex row with align-items:stretch caps the child at viewport height,
+   which made long docs bleed text past the white background. */
+#renderPane{background:transparent}
+/* #paper is now a CONTAINER of page sheets; the background shows through the gaps */
+#paper{
+  display:flex;flex-direction:column;align-items:center;gap:26px;
+  width:100%;padding:28px 0 64px;font:16px/1.65 var(--sans);color:var(--paper-ink);
+}
+.page{
+  width:100%;max-width:816px;aspect-ratio:8.5/11;         /* US Letter proportions */
+  padding:60px 68px;box-sizing:border-box;
+  background:var(--paper);color:var(--paper-ink);
+  border:1px solid var(--paper-line);border-radius:4px;
+  box-shadow:0 20px 50px rgba(0,0,0,.45);
+}
+.page>:first-child{margin-top:0}
+.pagebreak{height:0;margin:0;padding:0;border:0}
+/* document zoom — scales editor text + pages, chrome stays fixed */
+#editPane,#paper{zoom:var(--zoom,1)}
+/* rendered markdown typography — the clean sheet */
+#paper h1,#paper h2,#paper h3,#paper h4{line-height:1.25;margin:1.4em 0 .5em;color:#111}
+#paper h1{font-size:1.9em;font-weight:750;border-bottom:2px solid var(--paper-line);padding-bottom:.25em;margin-top:.2em}
+#paper h2{font-size:1.5em;font-weight:700;border-bottom:1px solid var(--paper-line);padding-bottom:.2em}
+#paper h3{font-size:1.22em;font-weight:700}
+#paper h4{font-size:1.05em;font-weight:700;color:var(--paper-dim)}
+#paper p{margin:.75em 0}
+#paper a{color:var(--paper-accent);text-decoration:underline;text-underline-offset:2px}
+#paper strong{font-weight:750}
+#paper code{font:.88em var(--mono);background:#ecebe4;border:1px solid var(--paper-line);
+  border-radius:4px;padding:.08em .35em}
+#paper pre{background:#1c1b26;color:#e7e6ec;border-radius:9px;padding:16px 18px;overflow:auto;margin:1em 0;
+  border:1px solid #2a2836;position:relative}
+#paper pre code{background:none;border:0;padding:0;color:inherit;font-size:.85em;line-height:1.6}
+#paper pre .lang{position:absolute;top:8px;right:12px;font:9px var(--mono);letter-spacing:.16em;
+  text-transform:uppercase;color:#8a8894}
+#paper blockquote{margin:1em 0;padding:.4em 1.1em;border-left:4px solid var(--paper-accent);
+  color:var(--paper-dim);background:#efeee7;border-radius:0 6px 6px 0}
+#paper ul,#paper ol{margin:.7em 0;padding-left:1.7em}
+#paper li{margin:.28em 0}
+#paper hr{border:0;border-top:2px solid var(--paper-line);margin:1.6em 0}
+#paper table{border-collapse:collapse;margin:1em 0;width:100%;font-size:.95em}
+#paper th,#paper td{border:1px solid var(--paper-line);padding:7px 11px;text-align:left}
+#paper th{background:#ecebe4;font-weight:700}
+#paper img{max-width:100%;height:auto;border-radius:6px;margin:.4em 0}
+#paper .math-inline{font-family:var(--mono);background:#efeee7;border-radius:4px;padding:0 .3em}
+#paper .math-block{text-align:center;margin:1.1em 0;font-family:var(--mono);
+  background:#efeee7;border-radius:6px;padding:12px}
+#paper .mermaid{margin:1em 0;text-align:center}#paper .mermaid svg{max-width:100%;height:auto}
+/* Write-view diagram preview cards (beside each mermaid fence, in the sheet margin; read-only) */
+/* Write view: reserve a gap under each ```mermaid fence and paint the rendered diagram INTO it, so the sheet
+   shows the diagram inline (the fence above it stays the editable source). (2026-08-26) a Word user sees a
+   raw fence and reads it as broken. The gap is a stylesheet rule so ProseMirror can't wipe it on edit. */
+/* Write view is the RENDERED side (the author: source must never show here — only on the Source tab). Collapse the
+   ```mermaid fence to a zero-height, invisible node and reserve a gap; the diagram card fills the gap in its place. */
+#tui .toastui-editor-ww-container pre.language-mermaid{height:0!important;min-height:0!important;max-height:0!important;padding:0!important;border:0!important;margin:2px 0 344px 0!important;overflow:hidden!important;opacity:0!important;pointer-events:none}
+#mmdLayer{position:absolute;inset:0;pointer-events:none;z-index:40;overflow:hidden}
+.mmd-card{position:absolute;z-index:41;pointer-events:auto;background:var(--paper,#f4f3ee);border:1px solid var(--line);border-radius:10px;padding:12px;box-shadow:0 8px 24px rgba(0,0,0,.28);overflow:auto;display:flex;flex-direction:column;justify-content:center}
+.mmd-card .mmd-h{font:9px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:#8a8aa0;margin-bottom:7px}
+.mmd-card svg{max-width:100%;max-height:262px;height:auto;width:auto;display:block;margin:0 auto}
+.mmd-card.err{border-color:var(--danger);background:color-mix(in srgb,var(--danger) 8%,#f4f3ee)}
+.mmd-card .mmd-e{font:11px/1.5 var(--mono);color:var(--danger);white-space:pre-wrap}
+body.lite .mmd-card{box-shadow:none}
+#paper .mermaid-src{white-space:pre;font:.82em var(--mono);background:#eeede6;border:1px dashed var(--paper-line);
+  border-radius:6px;padding:12px;color:var(--paper-dim)}
+
+/* ---- find & replace bar (Ctrl+F) — floats over the top of the editor ------ */
+#findBar{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:45;display:none;align-items:center;gap:6px;
+  padding:7px 9px;border-radius:10px;background:color-mix(in srgb,var(--bg2) 96%,transparent);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid var(--line);
+  box-shadow:0 14px 40px rgba(0,0,0,.5)}
+#findBar.open{display:flex}
+#findBar input{font:12px var(--mono);color:var(--fg);background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
+#findInput{width:180px}#replInput{width:180px}
+#findBar input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 10px color-mix(in srgb,var(--accent) 30%,transparent)}
+#findCount{font:10px var(--mono);color:var(--dim);min-width:38px;text-align:center;letter-spacing:.03em}
+.find-b{width:26px;height:26px;border-radius:6px;border:1px solid var(--line);background:color-mix(in srgb,var(--bg3) 60%,transparent);
+  color:var(--dim);font:11px var(--mono);cursor:pointer;flex:0 0 auto;transition:all .15s}
+.find-b.wide{width:auto;padding:0 9px}
+.find-b:hover{border-color:var(--accent);color:var(--core)}
+
+/* focus/zen dims chrome (§12) — a mood built from Lite-mode's switches */
+body.zen #toolbar{opacity:.35;transition:opacity .3s}
+body.zen #toolbar:hover{opacity:1}
+
+/* ---- status bar ---------------------------------------------------------- */
+#status{
+  display:flex;align-items:center;gap:16px;padding:5px 14px;font:11px var(--mono);
+  letter-spacing:.06em;color:var(--dim);border-top:1px solid var(--line);
+  background:color-mix(in srgb, var(--bg2) 84%, transparent);
+  -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+}
+#status .s-right{margin-left:auto;display:flex;gap:16px;align-items:center}
+#status b{color:var(--accent);font-weight:400}
+.dot{width:7px;height:7px;border-radius:999px;background:var(--dim);display:inline-block}
+.dot.live{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+
+/* ---- side drawer (settings / themes) ------------------------------------- */
+#drawer{
+  position:fixed;top:0;right:0;bottom:0;width:340px;max-width:88vw;z-index:60;
+  transform:translateX(105%);transition:transform .28s cubic-bezier(.4,0,.2,1);
+  background:color-mix(in srgb, var(--bg2) 92%, transparent);
+  -webkit-backdrop-filter:blur(16px) saturate(1.25); backdrop-filter:blur(16px) saturate(1.25);
+  border-left:1px solid var(--line);display:flex;flex-direction:column;
+  box-shadow:-20px 0 60px rgba(0,0,0,.5);
+}
+#drawer.open{transform:translateX(0)}
+.drawer-h{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--line)}
+.drawer-h h2{font:600 13px var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--hi)}
+.drawer-b{padding:16px 18px;overflow:auto;flex:1}
+.field{margin-bottom:22px}
+#aiModelList{margin-top:7px;max-height:34vh;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--bg3);padding:4px}
+.model-item{display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:6px;cursor:pointer;border:1px solid transparent;font:11px var(--mono);color:var(--fg);letter-spacing:.02em}
+.model-item .mid{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.model-item .st{flex:0 0 auto;font-size:9px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
+.model-item.loaded .st{color:var(--accent)}
+.model-item:hover{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.model-item.on{background:color-mix(in srgb,var(--accent) 14%,transparent);border-color:var(--accent)}
+.field>label{display:block;font:10px var(--mono);letter-spacing:.16em;text-transform:uppercase;
+  color:var(--dim);margin-bottom:9px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{padding:6px 12px;font:11px var(--mono);letter-spacing:.06em;color:var(--dim);
+  border-right:1px solid var(--line);transition:all .15s}
+.seg button:last-child{border-right:0}
+.seg button.on{background:color-mix(in srgb,var(--accent) 20%,transparent);color:var(--core)}
+.seg button:hover{color:var(--core)}
+/* theme swatch grid (§3) */
+#swGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.sw{border-radius:9px;overflow:hidden;border:1px solid var(--line);cursor:pointer;
+  transition:transform .15s, border-color .15s, box-shadow .15s;background:var(--bg3)}
+.sw:hover{transform:translateY(-2px);border-color:var(--accent)}
+.sw.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),0 0 14px color-mix(in srgb,var(--accent) 40%,transparent)}
+.sw .g{height:34px}
+.sw .n{font:8px var(--mono);letter-spacing:.06em;padding:4px 5px;color:var(--dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+.sw.on .n{color:var(--core)}
+.toggle{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.toggle span{font:12px var(--mono);letter-spacing:.04em;color:var(--fg)}
+.toggle small{display:block;font-size:10px;color:var(--dim);letter-spacing:.02em;margin-top:2px}
+.sw-toggle{width:44px;height:24px;border-radius:999px;background:var(--bg3);border:1px solid var(--line);
+  position:relative;cursor:pointer;transition:all .2s;flex:0 0 auto}
+.sw-toggle::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:999px;
+  background:var(--dim);transition:all .2s}
+.sw-toggle.on{background:color-mix(in srgb,var(--accent) 30%,transparent);border-color:var(--accent)}
+.sw-toggle.on::after{left:22px;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+
+/* ---- AI popup (Ctrl+A) --------------------------------------------------- */
+#scrim{position:fixed;inset:0;z-index:70;background:rgba(4,3,10,.62);
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);display:none}
+#scrim.open{display:block}
+#ai{
+  position:fixed;right:22px;bottom:52px;z-index:80;width:400px;max-width:92vw;height:60vh;max-height:640px;
+  display:none;flex-direction:column;border-radius:14px;
+  background:color-mix(in srgb, var(--bg2) 92%, transparent);
+  -webkit-backdrop-filter:blur(16px) saturate(1.25); backdrop-filter:blur(16px) saturate(1.25);
+  border:1px solid var(--line);box-shadow:0 24px 70px rgba(0,0,0,.6);overflow:hidden;
+}
+#ai.open{display:flex}
+.ai-h{display:flex;align-items:center;gap:9px;padding:12px 15px;border-bottom:1px solid var(--line)}
+.ai-h .star{width:9px;height:9px;border-radius:999px;background:var(--accent);box-shadow:0 0 10px var(--accent)}
+.ai-h h3{font:600 12px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--hi);flex:0 0 auto}
+.ai-icon{width:26px;height:24px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--dim);font-size:14px;line-height:1;cursor:pointer;flex:0 0 auto;transition:all .15s}
+.ai-icon:hover{color:var(--core);border-color:var(--line)}
+.ai-chat-title{flex:1;font:10px var(--mono);letter-spacing:.02em;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#aiChatsPanel{position:absolute;left:0;right:0;top:47px;bottom:0;z-index:6;display:none;flex-direction:column;
+  background:color-mix(in srgb,var(--bg2) 97%,transparent);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
+#aiChatsPanel.open{display:flex}
+#aiSetup{position:absolute;left:0;right:0;top:47px;bottom:0;z-index:7;display:none;flex-direction:column;overflow:auto;
+  background:color-mix(in srgb,var(--bg2) 98%,transparent);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
+#aiSetup.open{display:flex}
+.setup-in{padding:16px 16px 20px;display:flex;flex-direction:column;gap:8px}
+.setup-hi{font:14px var(--sans);color:var(--fg);margin:0}
+.setup-hi b{color:var(--hi)}
+.setup-sub{font:11.5px/1.55 var(--sans);color:var(--dim);margin:0 0 6px}
+#aiSetup label{font:9px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-top:6px}
+#aiSetup input,#aiSetup select{font:12px var(--sans);color:var(--fg);background:var(--bg3);border:1px solid var(--line);border-radius:7px;padding:8px 10px;outline:none}
+#aiSetup input:focus,#aiSetup select:focus{border-color:var(--accent)}
+.setup-tog{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;font:11.5px var(--sans);color:var(--fg)}
+.setup-btns{display:flex;gap:8px;margin-top:14px}
+.setup-btns .btn{flex:1;justify-content:center}
+.ai-chats-h{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line)}
+.ai-chats-h span{font:600 11px var(--mono);letter-spacing:.16em;color:var(--hi)}
+#aiChatList{overflow:auto;flex:1;padding:8px}
+.chat-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:8px;cursor:pointer;border:1px solid transparent;transition:background .15s,border-color .15s}
+.chat-item:hover{background:color-mix(in srgb,var(--bg3) 50%,transparent)}
+.chat-item.on{background:color-mix(in srgb,var(--accent) 14%,transparent);border-color:var(--accent)}
+.chat-item .ct{flex:1;font:12px var(--sans);color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-item .cbtn{opacity:0;border:none;background:none;color:var(--dim);cursor:pointer;font-size:12px;padding:2px 3px;flex:0 0 auto;transition:opacity .15s,color .15s}
+.chat-item:hover .cbtn{opacity:.7}
+.chat-item .cbtn:hover{opacity:1;color:var(--core)}
+.chat-item .cbtn.del:hover{color:var(--danger)}
+.chat-rename{flex:1;font:12px var(--sans);background:var(--bg3);border:1px solid var(--accent);border-radius:5px;color:var(--fg);padding:3px 6px;outline:none}
+.ai-log{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+.msg-row{display:flex;flex-direction:column;gap:4px;max-width:90%}
+.msg-row.me{align-self:flex-end;align-items:flex-end}
+.msg-row.ai{align-self:flex-start;align-items:flex-start}
+.msg-row.sys{align-self:center;align-items:center;max-width:100%}
+.msg{padding:9px 12px;border-radius:11px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word}
+.msg.me{background:color-mix(in srgb,var(--accent) 18%,transparent);border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line))}
+.msg.ai{background:color-mix(in srgb,var(--bg3) 70%,transparent);border:1px solid var(--line)}
+.msg.sys{font:10px var(--mono);letter-spacing:.06em;color:var(--dim);background:none;text-align:center}
+/* footer row under a bubble — copy · metrics · regen */
+.msg-foot{display:flex;align-items:center;gap:8px;padding:0 3px;flex-wrap:wrap}
+.msg-row.me .msg-foot{justify-content:flex-end}
+.foot-btn{border:1px solid var(--line);background:transparent;color:var(--dim);border-radius:6px;
+  padding:2px 8px;font:10px var(--mono);letter-spacing:.04em;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s}
+.foot-btn:hover{border-color:var(--accent);color:var(--core)}
+.metrics{font:10px var(--mono);letter-spacing:.03em;color:var(--accent);opacity:.9;white-space:nowrap}
+/* a model's reasoning / thinking — shown collapsed, never mixed into the answer, never sent back as history */
+.think{max-width:90%;font:10px var(--mono);letter-spacing:.04em;color:var(--dim)}
+.think summary{cursor:pointer;list-style:none;padding:3px 8px;border:1px dashed var(--line);border-radius:999px;display:inline-block}
+.think summary::-webkit-details-marker{display:none}
+.think[open] summary{border-color:var(--accent);color:var(--fg)}
+.think pre{white-space:pre-wrap;word-wrap:break-word;font:11px/1.45 var(--mono);color:var(--dim);margin-top:6px;padding:8px 10px;
+  background:color-mix(in srgb,var(--bg3) 50%,transparent);border:1px dashed var(--line);border-radius:8px;max-height:220px;overflow:auto}
+.ai-in{display:flex;gap:8px;padding:11px;border-top:1px solid var(--line)}
+.ai-in textarea{flex:1;resize:none;height:40px;background:var(--bg3);border:1px solid var(--line);
+  border-radius:9px;color:var(--fg);font:13px var(--sans);padding:9px 11px;outline:none}
+.ai-in textarea:focus{border-color:var(--accent)}
+.ai-cfg{padding:9px 13px;border-top:1px solid var(--line);display:flex;gap:7px;align-items:center}
+.ai-cfg input{flex:1}
+.ai-cfg label{font:9px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+
+/* ---- selection action button (floats by a highlight) --------------------- */
+#selBtn{position:fixed;z-index:75;display:none;padding:6px 11px;border-radius:8px;font:11px var(--mono);letter-spacing:.03em;
+  background:color-mix(in srgb,var(--accent) 22%,var(--bg2));border:1px solid var(--accent);color:var(--core);cursor:pointer;
+  box-shadow:0 6px 20px rgba(0,0,0,.45),0 0 14px color-mix(in srgb,var(--accent) 40%,transparent);white-space:nowrap}
+#selBtn:hover{background:color-mix(in srgb,var(--accent) 34%,var(--bg2))}
+#selBtn.show{display:inline-block}
+/* remote-control status light */
+#stControl.on{color:var(--hi)}
+#stControl.live{color:var(--accent);text-shadow:0 0 8px var(--accent)}
+/* ---- toast --------------------------------------------------------------- */
+#toast{position:fixed;left:50%;bottom:64px;transform:translateX(-50%) translateY(20px);z-index:90;
+  padding:10px 18px;border-radius:999px;font:12px var(--mono);letter-spacing:.05em;
+  background:color-mix(in srgb,var(--bg3) 92%,transparent);border:1px solid var(--accent);
+  color:var(--core);opacity:0;pointer-events:none;transition:all .3s;
+  box-shadow:0 0 20px color-mix(in srgb,var(--accent) 30%,transparent)}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* hidden file input */
+#fileIn{display:none}
+
+/* ---- LITE MODE (§11) — one switch, solid colour, strip every overlay ----- */
+body.lite{background:var(--bg)!important}
+body.lite #amb,body.lite #crt{display:none!important}
+body.lite .glass,body.lite #titlebar,body.lite #toolbar,body.lite #status,
+body.lite #drawer,body.lite #ai,body.lite #scrim,body.lite #toast,body.lite *{
+  -webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+body.lite #titlebar,body.lite #toolbar,body.lite #status{background:var(--bg2)!important}
+
+/* ---- reduced motion (§1.2) ---------------------------------------------- */
+@media (prefers-reduced-motion:reduce){
+  #crtFlick{animation:none;opacity:0}
+  *{transition-duration:.01ms!important}
+}
+
+/* ---- PRINT / PDF (§12): only the page, black ink on white ---------------- */
+@media print{
+  @page{margin:18mm}
+  body{background:#fff!important;overflow:visible;display:block;height:auto}
+  body::after,#amb,#crt,#titlebar,#toolbar,#tabbar,#status,#drawer,#scrim,#ai,#toast,#editPane{display:none!important}
+  #app,#work,#renderPane{display:block!important;height:auto!important;overflow:visible!important}
+  #paper{display:block!important;max-width:none;width:auto;gap:0;margin:0;padding:0;border:0;box-shadow:none;background:#fff;color:#000;font-size:11.5pt}
+  .page{max-width:none;width:auto;aspect-ratio:auto;min-height:0;margin:0;padding:0;border:0;box-shadow:none;background:#fff;break-after:page;page-break-after:always}
+  .page:last-child{break-after:auto;page-break-after:auto}
+  .pagebreak{break-after:page}
+  #paper pre{background:#f4f4f4;color:#000;border:1px solid #ccc}
+  #paper pre code,#paper pre .lang{color:#000}
+  #paper a{color:#000}
+  #paper h1,#paper h2{border-color:#bbb}
+}
+</style>
+<!-- ===== vendored editor engine (Toast UI Editor 3, MIT) — inlined by build.py ===== -->
+<!--@@CSS:@toast-ui/editor/dist/toastui-editor.css@@-->
+<!--@@CSS:@toast-ui/editor/dist/theme/toastui-editor-dark.css@@-->
+<!--@@CSS:tui-color-picker/dist/tui-color-picker.css@@-->
+<!--@@CSS:@toast-ui/editor-plugin-color-syntax/dist/toastui-editor-plugin-color-syntax.css@@-->
+<!--@@CSS:prismjs/themes/prism-tomorrow.css@@-->
+<!--@@CSS:@toast-ui/editor-plugin-code-syntax-highlight/dist/toastui-editor-plugin-code-syntax-highlight.css@@-->
+<style id="tuiSkin">
+/* ---- Toast UI skin: chrome is ours; the WYSIWYG surface becomes the clean sheet (§12) ---- */
+#editPane{display:block;overflow:hidden}
+#tui{height:100%}
+#tui .toastui-editor-defaultUI{border:0!important;border-radius:0!important;background:transparent!important;height:100%!important;display:flex;flex-direction:column}
+#tui .toastui-editor-toolbar,#tui .toastui-editor-mode-switch{display:none!important}
+#tui .toastui-editor-main{flex:1;min-height:0}
+#tui .toastui-editor-main-container{height:100%}
+/* WYSIWYG = a Letter-width paper sheet floating on the ambience */
+#tui .toastui-editor-ww-container{background:transparent!important;height:100%}
+#tui .toastui-editor-ww-container>.toastui-editor{height:100%;overflow:auto;padding:28px 24px 64px}
+#tui .toastui-editor-ww-container .toastui-editor-contents{
+  max-width:816px;min-height:1056px;margin:0 auto;padding:60px 68px;
+  background:var(--paper);color:var(--paper-ink);border:1px solid var(--paper-line);border-radius:4px;
+  box-shadow:0 20px 50px rgba(0,0,0,.45);font:16px/1.65 var(--sans);caret-color:#000}
+#tui .toastui-editor-ww-container .toastui-editor-contents *:not(.token):not(pre):not(code){color:inherit}   /* Prism tokens + code blocks keep their own colours */
+/* the engine's stylesheet uses word-break:break-all (CJK convenience) — English must wrap at word boundaries */
+#tui .toastui-editor-contents,#tui .toastui-editor-contents p,#tui .toastui-editor-contents li,#tui .toastui-editor-contents td,#tui .toastui-editor-contents th,
+#tui .toastui-editor-contents blockquote,#tui .toastui-editor-contents h1,#tui .toastui-editor-contents h2,#tui .toastui-editor-contents h3{word-break:normal!important;overflow-wrap:break-word!important;white-space:normal}
+#tui .toastui-editor-contents pre{white-space:pre;word-break:normal!important}
+#paper,#paper *{word-break:normal;overflow-wrap:break-word}
+#paper pre,#paper pre code{white-space:pre}
+#tui .toastui-editor-ww-container .toastui-editor-contents h1,#tui .toastui-editor-ww-container .toastui-editor-contents h2,
+#tui .toastui-editor-ww-container .toastui-editor-contents h3,#tui .toastui-editor-ww-container .toastui-editor-contents h4{line-height:1.25;margin:1.4em 0 .5em;color:#111;border-bottom:0;padding:0}
+#tui .toastui-editor-ww-container .toastui-editor-contents h1{font-size:1.9em;font-weight:750;border-bottom:2px solid var(--paper-line);padding-bottom:.25em;margin-top:.2em}
+#tui .toastui-editor-ww-container .toastui-editor-contents h2{font-size:1.5em;font-weight:700;border-bottom:1px solid var(--paper-line);padding-bottom:.2em}
+#tui .toastui-editor-ww-container .toastui-editor-contents h3{font-size:1.22em;font-weight:700}
+#tui .toastui-editor-ww-container .toastui-editor-contents p{margin:.75em 0;font-size:1em}
+#tui .toastui-editor-ww-container .toastui-editor-contents a{color:var(--paper-accent)}
+#tui .toastui-editor-ww-container .toastui-editor-contents code{font:.88em var(--mono);background:#ecebe4;border:1px solid var(--paper-line);border-radius:4px;padding:.08em .35em;color:var(--paper-ink)}
+#tui .toastui-editor-ww-container .toastui-editor-contents pre{background:#1c1b26;color:#e7e6ec;border-radius:9px;padding:16px 18px;border:1px solid #2a2836}
+#tui .toastui-editor-ww-container .toastui-editor-contents pre code{color:#e7e6ec;font:.85em/1.6 var(--mono);background:transparent;border:0;padding:0}
+#tui .toastui-editor-ww-container .toastui-editor-contents pre .token{background:none}   /* Prism tokens keep their own colours */
+#tui .toastui-editor-ww-container .toastui-editor-contents blockquote{margin:1em 0;padding:.4em 1.1em;border-left:4px solid var(--paper-accent);color:var(--paper-dim);background:#efeee7;border-radius:0 6px 6px 0}
+#tui .toastui-editor-ww-container .toastui-editor-contents blockquote *{color:var(--paper-dim)}
+#tui .toastui-editor-ww-container .toastui-editor-contents ul,#tui .toastui-editor-ww-container .toastui-editor-contents ol{margin:.7em 0;padding-left:1.7em}
+#tui .toastui-editor-ww-container .toastui-editor-contents hr{border:0;border-top:2px solid var(--paper-line);margin:1.6em 0}
+#tui .toastui-editor-ww-container .toastui-editor-contents th,#tui .toastui-editor-ww-container .toastui-editor-contents td{border:1px solid var(--paper-line);padding:7px 11px;color:var(--paper-ink)}
+#tui .toastui-editor-ww-container .toastui-editor-contents th{background:#ecebe4;font-weight:700}
+#tui .toastui-editor-ww-container .toastui-editor-contents img{max-width:100%;border-radius:6px}
+#tui .toastui-editor-ww-container .toastui-editor-contents ::selection{background:color-mix(in srgb,var(--accent) 35%,transparent)}
+/* Source mode = dark code surface with Toast's live preview beside it */
+#tui .toastui-editor-md-container{background:color-mix(in srgb,var(--bg) 60%,#000 6%)!important}
+#tui .toastui-editor-md-container .toastui-editor{font:14px/1.7 var(--mono)!important;color:#e7e6ec}
+#tui .toastui-editor-md-container .ProseMirror{font:14px/1.7 var(--mono)!important;color:#e7e6ec;padding:28px 34px}
+#tui .toastui-editor-md-splitter{background:var(--line)!important}
+#tui .toastui-editor-md-preview{background:color-mix(in srgb,var(--bg2) 55%,transparent)!important}
+#tui .toastui-editor-md-preview .toastui-editor-contents{color:var(--fg);font:15px/1.6 var(--sans);padding:24px 30px}
+#tui .toastui-editor-md-preview .toastui-editor-contents *{color:var(--fg)}
+#tui .toastui-editor-md-preview .toastui-editor-contents code,#tui .toastui-editor-md-preview .toastui-editor-contents pre{background:color-mix(in srgb,var(--bg3) 70%,transparent);color:var(--fg)}
+/* popups the engine opens (link/image dialogs) inherit the glass */
+#tui .toastui-editor-popup{background:color-mix(in srgb,var(--bg2) 96%,transparent)!important;border:1px solid var(--line)!important;color:var(--fg)}
+</style>
+</head>
+<body>
+<canvas id="amb"></canvas>
+<div id="crt"><div id="crtFx"></div><div id="crtScan"></div><div id="crtBloom"></div><div id="crtFlick"></div></div>
+
+<div id="app">
+  <!-- TITLE BAR -->
+  <div id="titlebar">
+    <div class="wordmark">SCRIPTORIUM<small>v2 · wysiwyg</small></div>
+    <div id="docname">untitled.md</div>
+    <div class="tb-right">
+      <button class="btn icon" id="btnNew" data-icon="new" title="New (Ctrl+N)"></button>
+      <button class="btn icon" id="btnOpen" data-icon="open" title="Open .md (Ctrl+O)"></button>
+      <button class="btn primary" id="btnSave" data-icon="save" title="Save .md (Ctrl+S)"><span>Save</span></button>
+      <button class="btn icon" id="btnSaveAs" data-icon="saveas" title="Save As… — write a copy to a new file and switch this tab to it; the original is untouched (Ctrl+Shift+S)"></button>
+      <span class="sep"></span>
+      <button class="btn icon" id="btnPrint" data-icon="print" title="Print / PDF (Ctrl+P)"></button>
+      <button class="btn" id="btnExport" data-icon="export" title="Export self-contained HTML"><span>HTML</span></button>
+      <span class="sep"></span>
+      <button class="btn" id="btnAI" data-icon="spark" title="AI assistant (Ctrl+A)"><span>Assistant</span></button>
+      <button class="btn icon" id="btnGear" data-icon="gear" title="Theme &amp; settings"></button>
+    </div>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div id="toolbar">
+    <div class="grp">
+      <button class="tbtn" id="btnUndo" data-icon="undo" title="Undo (Ctrl+Z) — keystrokes first, then whole-document steps (the assistant's edits, loads)"></button>
+      <button class="tbtn" id="btnRedo" data-icon="redo" title="Redo (Ctrl+Y)"></button>
+    </div>
+    <span class="sep"></span>
+    <div class="grp">
+      <button class="tbtn" data-md="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+      <button class="tbtn" data-md="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+      <button class="tbtn" data-md="strike" title="Strikethrough"><s>S</s></button>
+      <button class="tbtn" data-md="code" title="Inline code">&lt;/&gt;</button>
+    </div>
+    <span class="sep"></span>
+    <div class="grp">
+      <button class="tbtn" data-md="h1" title="Heading 1">H1</button>
+      <button class="tbtn" data-md="h2" title="Heading 2">H2</button>
+      <button class="tbtn" data-md="h3" title="Heading 3">H3</button>
+    </div>
+    <span class="sep"></span>
+    <div class="grp">
+      <button class="tbtn" data-md="ul" data-icon="ul" title="Bullet list"></button>
+      <button class="tbtn" data-md="ol" data-icon="ol" title="Numbered list"></button>
+      <button class="tbtn" data-md="quote" data-icon="quote" title="Blockquote"></button>
+      <button class="tbtn" data-md="hr" data-icon="hr" title="Horizontal rule"></button>
+    </div>
+    <span class="sep"></span>
+    <div class="grp">
+      <button class="tbtn" data-md="link" data-icon="link" title="Link (Ctrl+K)"></button>
+      <button class="tbtn" data-md="image" data-icon="image" title="Image (URL or paste)"></button>
+      <button class="tbtn" data-md="table" data-icon="table" title="Table"></button>
+      <button class="tbtn" data-md="fence" data-icon="codeblock" title="Code block"></button>
+      <button class="tbtn" data-md="math" data-icon="math" title="Math $…$"></button>
+    </div>
+    <span class="sep"></span>
+    <div class="grp" title="Font / size / colour — writes inline spans (masterclass §2)">
+      <select id="fontSel">
+        <option value="">— font —</option>
+        <option value="var(--sans)">Sans (system)</option>
+        <option value="Georgia, 'Times New Roman', serif">Serif</option>
+        <option value="var(--mono)">Mono</option>
+        <option value="'Segoe UI', system-ui, sans-serif">Segoe</option>
+        <option value="'Comic Sans MS', cursive">Casual</option>
+      </select>
+      <select id="sizeSel">
+        <option value="">— size —</option>
+        <option value="0.85em">S</option>
+        <option value="1em">M</option>
+        <option value="1.25em">L</option>
+        <option value="1.6em">XL</option>
+      </select>
+      <input type="color" id="colorSel" value="#c0392b" title="Text colour">
+    </div>
+    <span class="sep"></span>
+    <div class="grp seg" id="viewSeg" title="View — Ctrl+E cycles">
+      <button data-view="write" class="on">Write</button>
+      <button data-view="source">Source</button>
+      <button data-view="render" title="Print preview — the document flowed onto Letter pages exactly as it prints/exports (read-only)">Page</button>
+    </div>
+    <button class="btn icon" id="btnZen" data-icon="focus" title="Focus / zen (dims chrome)" style="margin-left:4px"></button>
+    <span class="sep"></span>
+    <div class="grp" id="zoomGrp" title="Zoom the document">
+      <button class="tbtn" id="zoomOut" title="Zoom out">−</button>
+      <button class="tbtn" id="zoomReset" title="Reset zoom" style="width:auto;padding:0 8px;font:11px var(--mono);letter-spacing:.02em">100%</button>
+      <button class="tbtn" id="zoomIn" title="Zoom in">+</button>
+    </div>
+  </div>
+
+  <!-- TAB STRIP (multi-doc) -->
+  <div id="tabbar"></div>
+
+  <!-- WORK AREA -->
+  <div id="work">
+    <div id="findBar">
+      <input type="text" id="findInput" placeholder="Find" autocomplete="off" spellcheck="false">
+      <span id="findCount">0</span>
+      <button class="find-b" id="findPrev" title="Previous (Shift+Enter)">▲</button>
+      <button class="find-b" id="findNext" title="Next (Enter)">▼</button>
+      <input type="text" id="replInput" placeholder="Replace with" autocomplete="off" spellcheck="false">
+      <button class="find-b wide" id="replOne" title="Replace this match">Replace</button>
+      <button class="find-b wide" id="replAll" title="Replace every match">All</button>
+      <button class="find-b" id="findClose" title="Close (Esc)">✕</button>
+    </div>
+    <div class="pane" id="editPane"><div id="tui"></div></div>
+    <div class="pane" id="renderPane"><article id="paper"></article></div>
+  </div>
+
+  <!-- STATUS -->
+  <div id="status">
+    <span><span class="dot" id="saveDot"></span> <span id="saveState">saved</span></span>
+    <span>theme <b id="stTheme">Hearth Goth</b></span>
+    <span id="stAmb">plasma</span>
+    <div class="s-right">
+      <span id="stCounts">0 words · 0 chars</span>
+      <span id="stView">split</span>
+      <span id="stControl" title="Remote control — lets Claude Code (or any agent) drive this editor through the local helper. Lights up when connected; flashes when a command runs." style="display:none">remote ○</span>
+      <span id="stBuild" title="Build timestamp — if this is not tonight, you are on a cached copy: close the window (Super+W) and reopen it">build @@BUILDSTAMP@@</span>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS DRAWER -->
+<div id="drawer">
+  <div class="drawer-h"><h2>Theme &amp; Settings</h2><button class="btn icon" id="drawerClose">✕</button></div>
+  <div class="drawer-b">
+    <div class="field">
+      <label>Palette · 20 stops</label>
+      <div id="swGrid"></div>
+    </div>
+    <div class="field">
+      <label>Ambience</label>
+      <div class="seg" id="ambSeg">
+        <button data-amb="off">off</button>
+        <button data-amb="plasma" class="on">plasma</button>
+        <button data-amb="matrix">matrix</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Screen glass (CRT)</label>
+      <div class="seg" id="crtGlassSeg">
+        <button data-crtg="off" class="on">off</button>
+        <button data-crtg="soft">soft</button>
+        <button data-crtg="full">full</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Scanlines</label>
+      <div class="seg" id="crtScanSeg">
+        <button data-crts="off" class="on">off</button>
+        <button data-crts="subtle">subtle</button>
+        <button data-crts="strong">strong</button>
+      </div>
+      <div class="toggle" style="margin-top:11px">
+        <span>Clean page<small>keep scanlines off the writing page (§12)</small></span>
+        <div class="sw-toggle" id="cleanPageTgl"></div>
+      </div>
+    </div>
+    <div class="field">
+      <div class="toggle">
+        <span>Low-end laptop mode<small>solid colour · no blur/overlays (§11)</small></span>
+        <div class="sw-toggle" id="liteTgl"></div>
+      </div>
+      <div class="toggle">
+        <span>Focus / zen<small>dims chrome while writing (§12)</small></span>
+        <div class="sw-toggle" id="zenTgl"></div>
+      </div>
+    </div>
+    <div class="field" id="aiCfgField">
+      <label>AI Assistant · server</label>
+      <div style="display:flex;gap:7px;align-items:center;margin-bottom:9px">
+        <input type="text" id="aiEndpoint2" placeholder="http://localhost:1234" style="flex:1" title="Bare host, /v1, or full path — the /v1/chat/completions path auto-completes">
+        <div class="sw-toggle" id="aiLockTgl" title="Lock to this server (prevents edits)"></div>
+      </div>
+      <div style="display:flex;gap:7px;align-items:center">
+        <input type="text" id="aiModelFilter" placeholder="filter models…" style="flex:1" title="Type to narrow the list below">
+        <button class="btn" id="aiPoll" title="Query the server for its models">Poll</button>
+      </div>
+      <div id="aiModelList" title="Click a model to use it"></div>
+      <div id="aiCfgStatus" style="font:10px var(--mono);color:var(--dim);margin-top:7px;letter-spacing:.04em;line-height:1.5"></div>
+      <div style="display:flex;gap:7px;align-items:center;margin-top:10px">
+        <input type="text" id="aiSearchUrl" placeholder="http://127.0.0.1:9194  (search helper)" style="flex:1" title="Local search helper — run: python tools/search-helper.py — gives the assistant web_search + read_url">
+        <button class="btn" id="aiSearchPing" title="Check the search helper">Ping</button>
+      </div>
+      <div id="aiSearchStatus" style="font:10px var(--mono);color:var(--dim);margin-top:7px;letter-spacing:.04em;line-height:1.5"></div>
+      <div class="toggle" style="margin-top:11px"><span>Remote control<small>let Claude Code / any agent drive this editor via the helper</small></span><div class="sw-toggle" id="controlTgl"></div></div>
+      <div class="toggle"><span>Save AI trace<small>full prompt+reply per exchange → ~/.local/share/scriptorium/trace (local)</small></span><div class="sw-toggle" id="traceTgl"></div></div>
+      <div style="display:flex;gap:7px;margin-top:8px">
+        <button class="btn" id="aiTraceCopy" style="flex:1" title="Copy the raw request/response trace of the last exchanges (for debugging what the model actually sent)">⧉ Copy debug trace</button>
+        <button class="btn" id="aiTraceClear" title="Clear the trace">✕</button>
+      </div>
+      <div style="font:9px var(--mono);color:var(--dim);margin-top:5px;letter-spacing:.03em;line-height:1.6;opacity:.8">
+        LM Studio: enable “Serve on Local Network / CORS” in server settings, load a model, then Poll.
+      </div>
+    </div>
+    <div class="field" id="aiIdentityField">
+      <label>AI identity</label>
+      <input type="text" id="aiName" placeholder="Assistant name" style="width:100%;margin-bottom:8px" title="Name shown in the assistant panel">
+      <textarea id="aiIdentity" rows="6" placeholder="System prompt / persona…"
+        style="width:100%;resize:vertical;font:11px/1.5 var(--mono);color:var(--fg);background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:9px 11px;outline:none"></textarea>
+      <div style="display:flex;gap:7px;margin-top:7px">
+        <button class="btn" id="aiSetupBtn" style="flex:1" title="Run the quick setup interview again">✦ Set up assistant…</button>
+        <button class="btn" id="aiIdentityLoad" style="flex:1" title="Load a persona / system prompt from a .md or .txt file">▤ Load from file…</button>
+      </div>
+      <div style="display:flex;gap:7px;margin-top:7px">
+        <button class="btn" id="aiIdentityReset" style="flex:1">↺ Reset to default</button>
+      </div>
+    </div>
+    <div class="field" style="color:var(--dim);font:10px var(--mono);line-height:1.7;letter-spacing:.04em">
+      RIALTO DESIGN SYSTEM · cathedral around a clean sheet of paper.<br>
+      The page stays near-neutral ink; glass · plasma · CRT live on the frame only.
+    </div>
+  </div>
+</div>
+
+<!-- AI POPUP -->
+<div id="scrim"></div>
+<div id="ai">
+  <div class="ai-h">
+    <button class="ai-icon" id="aiChatsBtn" title="Chats">☰</button>
+    <span class="star"></span><h3>Assistant</h3>
+    <span id="aiChatTitle" class="ai-chat-title"></span>
+    <button class="ai-icon" id="aiClose" title="Close">✕</button>
+  </div>
+  <div id="aiChatsPanel">
+    <div class="ai-chats-h"><span>CHATS</span><button class="foot-btn" id="aiNewChat">+ New chat</button></div>
+    <div id="aiChatList"></div>
+  </div>
+  <div id="aiSetup">
+    <div class="setup-in">
+      <p class="setup-hi">Hi — I'm <b id="setupName">Maya</b>, the writing partner built into this editor.</p>
+      <p class="setup-sub">A quick word on how I work: I tell you the truth over telling you what you want to hear, I don't make things up (if I don't have the goods, I say so), I show my reasoning, and I push the work forward with ideas — not flattery. Tell me a little about you and I'll fit that to how you write. You can skip this and change it any time in ⚙.</p>
+      <label>What should I call you?</label>
+      <input type="text" id="setupUser" placeholder="your name" autocomplete="off">
+      <label>What do you write here?</label>
+      <input type="text" id="setupWork" placeholder="reports · docs · specs · fiction · notes…" autocomplete="off">
+      <label>How should I work with you?</label>
+      <select id="setupStyle">
+        <option value="balanced">Balanced — reasoning enough to check, not a lecture</option>
+        <option value="terse">Terse — lead with the answer, keep it tight</option>
+        <option value="thorough">Thorough — show the reasoning and the alternatives</option>
+      </select>
+      <div class="setup-tog"><span>Push back hard when I'm wrong (don't just agree)</span><div class="sw-toggle on" id="setupPush"></div></div>
+      <label>Prefer a different name for me? (optional)</label>
+      <input type="text" id="setupRename" placeholder="Maya" autocomplete="off">
+      <div class="setup-btns">
+        <button class="btn primary" id="setupGo">Set me up</button>
+        <button class="btn" id="setupSkip">Skip</button>
+      </div>
+    </div>
+  </div>
+  <div class="ai-log" id="aiLog"></div>
+  <div class="ai-in">
+    <textarea id="aiIn" placeholder="Ask about the document… (Enter to send)"></textarea>
+    <button class="btn primary" id="aiSend">↑</button>
+  </div>
+  <div class="ai-cfg">
+    <span id="aiReadout" style="flex:1;font:10px var(--mono);letter-spacing:.03em;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">no server set</span>
+    <button class="btn icon" id="aiConfigBtn" title="Configure server &amp; model">⚙</button>
+  </div>
+</div>
+
+<button id="selBtn" title="Ask the assistant to rework the highlighted text">✦ ask about this</button>
+<div id="toast"></div>
+<input type="file" id="fileIn" accept=".md,.markdown,.txt,text/markdown,text/plain">
+<input type="file" id="identityIn" accept=".md,.markdown,.txt,text/markdown,text/plain" style="display:none">
+
+<!-- optional personal overrides (persona / server); gitignored, safe to omit -->
+<script src="scriptorium.local.js" onerror="this.remove()"></script>
+<!-- ===== vendored editor engine JS (inlined by build.py) ===== -->
+<!--@@JS:../engine.js@@-->
+<!--@@CSS:katex/dist/katex.min.css@@-->
+<!--@@JS:katex/dist/katex.min.js@@-->
+<!--@@JS:mermaid/dist/mermaid.min.js@@-->
+<script>
+"use strict";
+/* Optional local overrides from scriptorium.local.js (gitignored): {name, identity, endpoint}.
+   Declared FIRST: several functions below read it during page load. */
+const LOCAL = (typeof window.SCRIPTORIUM_LOCAL==='object' && window.SCRIPTORIUM_LOCAL) || {};
+window.SCRIPTORIUM_BUILD='@@BUILDSTAMP@@'; try{ console.log('Scriptorium build @@BUILDSTAMP@@'); }catch(e){}
+/* KaTeX + Mermaid are bundled (2026-08-26) — the renderer below used to advertise them and ship neither. */
+try{ if(window.mermaid) window.mermaid.initialize({startOnLoad:false,theme:'neutral'}); }catch(e){}
+/* raw AI exchange trace — the last few requests/responses, for debugging what a model really sent.
+   Declared up here too: the settings wiring references it during load. */
+let aiTrace=[]; try{ aiTrace=JSON.parse(localStorage.getItem('scr_ai_trace')||'[]'); }catch(e){}
+function traceSave(){ try{ let s=JSON.stringify(aiTrace); while(s.length>400000 && aiTrace.length>1){ aiTrace.shift(); s=JSON.stringify(aiTrace); } localStorage.setItem('scr_ai_trace',s); }catch(e){} window.__aiTrace=aiTrace; }
+/* ========================================================================== *
+ *  THEME ENGINE  (masterclass §2–§3) — 5 stops → full token set via color-mix *
+ * ========================================================================== */
+const THEMES = [
+ ["Hearth Goth",["#0a0713","#3a1a5c","#ff6b1a","#ffab40","#8fd0ff"]], ["Ember",["#0a0503","#5c1e0a","#c8420f","#ff8a2a","#ffe0a0"]],
+ ["Phosphor",   ["#001014","#004d52","#00b0b8","#4affff","#dbffff"]], ["Matrix",["#001a08","#00551a","#00b83a","#4dff77","#d6ffe0"]],
+ ["Vaporwave",  ["#12002e","#5a1a8c","#ff3caf","#3cf0ff","#fff0ff"]], ["Blood Moon",["#0a0004","#3a0010","#8c0022","#e0143c","#ff7a94"]],
+ ["Glacier",    ["#030a14","#0a3a5c","#2a8ccc","#7fd8ff","#eaffff"]], ["Gold Rush",["#0f0a02","#4d360a","#b8860f","#ffcf4a","#fff4cf"]],
+ ["Ultraviolet",["#0a0018","#3a0a6c","#8c2aff","#c07aff","#eaddff"]], ["Toxic",["#030a00","#1e4d00","#66b800","#aaff2a","#e8ffcf"]],
+ ["Sunset",     ["#12030a","#5c1440","#e0466b","#ff9a4a","#ffe0a0"]], ["Deep Sea",["#00060f","#052a3a","#0a6c7a","#2ac0b8","#9fffee"]],
+ ["Magma",      ["#0a0300","#5c1400","#c83c00","#ff8a1a","#ffe04a"]], ["Nebula",["#05001a","#2a0a5c","#6c2ac0","#c04adf","#ff9adf"]],
+ ["Amber CRT",  ["#0a0600","#3a2400","#8c5c00","#ffab1a","#ffe0a0"]], ["Green CRT",["#001200","#003a00","#008c00","#3aff3a","#d6ffd6"]],
+ ["Copper",     ["#0a0603","#3a2414","#8c5c3a","#d99a6a","#ffe0c0"]], ["Mono",["#050508","#2a2a30","#6c6c78","#b0b0bc","#f0f0f6"]],
+ ["Sakura",     ["#12060a","#5c2440","#c04a7a","#ff9ac0","#ffe0ee"]], ["Cyberpunk",["#0a0a00","#3a0a3a","#c0c000","#ff2ac0","#2affff"]]
+];
+const $ = s => document.querySelector(s);
+const mix = (a,p,b)=>`color-mix(in srgb, ${a} ${p}%, ${b})`;
+/* ---- Tron outline icons (custom SVG, stroke = currentColor) --------------- */
+const ICONS = {
+  new:'<path d="M13 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V9z"/><path d="M13 3v6h6"/><path d="M12 12.5v5M9.5 15h5"/>',
+  open:'<path d="M4 8.5V6.3A1.3 1.3 0 0 1 5.3 5h3.5l1.7 2H18a1.3 1.3 0 0 1 1.3 1.3V9"/><path d="M3.4 11.1A1 1 0 0 1 4.4 10h15.2a1 1 0 0 1 1 1.2l-1.2 6.4A1.5 1.5 0 0 1 17.9 19H6.1a1.5 1.5 0 0 1-1.5-1.4z"/>',
+  save:'<path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H16l3 3v11.5A1.5 1.5 0 0 1 17.5 20h-11A1.5 1.5 0 0 1 5 18.5z"/><path d="M8 4v5h6.5V4"/><path d="M8 13h8v7H8z"/>',
+  print:'<path d="M7 9V4h8.2L17 5.8V9"/><path d="M7 17H5.5A1.5 1.5 0 0 1 4 15.5v-4A1.5 1.5 0 0 1 5.5 10h13A1.5 1.5 0 0 1 20 11.5v4A1.5 1.5 0 0 1 18.5 17H17"/><path d="M7 14h10v6H7z"/>',
+  export:'<path d="M12 4v9"/><path d="M8.4 9.6 12 13.2l3.6-3.6"/><path d="M5 16v2.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V16"/>',
+  spark:'<path d="M12 3.4l1.7 5.2a2 2 0 0 0 1.3 1.3l5.2 1.7-5.2 1.7a2 2 0 0 0-1.3 1.3L12 20.6l-1.7-5.2a2 2 0 0 0-1.3-1.3L3.8 12.3l5.2-1.7a2 2 0 0 0 1.3-1.3z"/><path d="M18.5 3.2l.5 1.8 1.8.5-1.8.5-.5 1.8-.5-1.8-1.8-.5 1.8-.5z"/>',
+  gear:'<path d="M12 9.3a2.7 2.7 0 1 0 0 5.4 2.7 2.7 0 0 0 0-5.4z"/><path d="M19.3 13.4a7.6 7.6 0 0 0 0-2.8l1.6-1.3-1.6-2.8-1.9.8a7.4 7.4 0 0 0-2.5-1.4L14.4 3.9h-3.2l-.3 2a7.4 7.4 0 0 0-2.5 1.4l-1.9-.8-1.6 2.8 1.6 1.3a7.6 7.6 0 0 0 0 2.8l-1.6 1.3 1.6 2.8 1.9-.8a7.4 7.4 0 0 0 2.5 1.4l.3 2h3.2l.3-2a7.4 7.4 0 0 0 2.5-1.4l1.9.8 1.6-2.8z"/>',
+  focus:'<path d="M20 14.4A8 8 0 1 1 10.2 4a6.2 6.2 0 0 0 9.8 10.4z"/>',
+  ul:'<circle cx="4.6" cy="6.5" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.6" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.6" cy="17.5" r="1.3" fill="currentColor" stroke="none"/><path d="M9 6.5h11M9 12h11M9 17.5h11"/>',
+  ol:'<path d="M9 6.5h11M9 12h11M9 17.5h11"/><path d="M4.6 4.6v4M3.9 4.9l.7-.5M3.4 11.4c1-.9 1.9.2 1.2 1L3.5 14h1.9M3.5 16.6h1.6l-1.3 1.5a.85.85 0 1 1 .2 1.4"/>',
+  quote:'<path d="M6 15.2c0-3 1.3-5 3.6-6l.6 1.2C8.7 11 8.1 12 8.1 13h1.9v4.2H6zM14 15.2c0-3 1.3-5 3.6-6l.6 1.2c-1.5 .6-2.1 1.6-2.1 2.6h1.9v4.2H14z"/>',
+  hr:'<path d="M4 12h16"/><path d="M4.5 9.2v5.6M19.5 9.2v5.6" opacity=".55"/>',
+  link:'<path d="M10.6 13.4a3.4 3.4 0 0 0 5 .2l2.3-2.3a3.4 3.4 0 0 0-4.8-4.8l-1 1"/><path d="M13.4 10.6a3.4 3.4 0 0 0-5-.2L6.1 12.7a3.4 3.4 0 0 0 4.8 4.8l1-1"/>',
+  image:'<path d="M4.5 5h15A1.5 1.5 0 0 1 21 6.5v11A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-11A1.5 1.5 0 0 1 4.5 5z"/><circle cx="8.6" cy="9.5" r="1.5"/><path d="M3.4 16 8 12l3 2.5L15 10l6 5.6"/>',
+  table:'<path d="M4.5 5h15A1.5 1.5 0 0 1 21 6.5v11A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-11A1.5 1.5 0 0 1 4.5 5z"/><path d="M3 10h18M3 14.5h18M9 5v14M15 5v14"/>',
+  codeblock:'<path d="M4.5 5h15A1.5 1.5 0 0 1 21 6.5v11A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-11A1.5 1.5 0 0 1 4.5 5z"/><path d="M9.5 10 7 12.5 9.5 15M14.5 10 17 12.5 14.5 15"/>',
+  math:'<path d="M16.5 6H8l5 6-5 6h8.5"/>',
+  saveas:'<path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H16l3 3v4"/><path d="M8 4v5h6.5V4"/><path d="M5 5.5v13A1.5 1.5 0 0 0 6.5 20H11"/><path d="M8 13h4"/><path d="M17.5 14v6M14.5 17h6"/>',
+  undo:'<path d="M9 14 4 9l5-5"/><path d="M4 9h9.5a5.5 5.5 0 0 1 0 11H10"/>',
+  redo:'<path d="m15 14 5-5-5-5"/><path d="M20 9h-9.5a5.5 5.5 0 0 0 0 11H14"/>'
+};
+document.querySelectorAll('[data-icon]').forEach(el=>{
+  const k=el.dataset.icon; if(ICONS[k]) el.insertAdjacentHTML('afterbegin', `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>`);
+});
+function applyTheme(i){
+  const t = THEMES[i]||THEMES[0], s = t[1], r = document.documentElement.style;
+  r.setProperty('--bg',s[0]);
+  r.setProperty('--bg2',mix(s[1],26,s[0]));
+  r.setProperty('--bg3',mix(s[1],44,s[0]));
+  r.setProperty('--line',mix(s[2],34,s[0]));
+  r.setProperty('--deep',s[1]);
+  r.setProperty('--accent2',s[2]);
+  r.setProperty('--accent',s[3]);
+  r.setProperty('--hi',s[4]);
+  r.setProperty('--fg',mix(s[4],14,'#e9e8ee'));       /* §12: ink stays near-neutral */
+  r.setProperty('--dim',mix(s[3],22,'#8a8894'));
+  r.setProperty('--bgGrad',`radial-gradient(120% 100% at 50% 0%, ${mix(s[1],42,s[0])} 0%, ${s[0]} 58%, #030207 100%)`);
+  document.querySelectorAll('#swGrid .sw').forEach((el,k)=>el.classList.toggle('on',k===i));
+  $('#stTheme').textContent = t[0];
+  localStorage.setItem('scr_theme', String(i));
+}
+/* swatch grid */
+(function buildSwatches(){
+  const g = $('#swGrid');
+  THEMES.forEach((t,i)=>{
+    const d=document.createElement('div'); d.className='sw'; d.title=t[0];
+    d.innerHTML=`<div class="g" style="background:linear-gradient(90deg,${t[1].join(',')})"></div><div class="n">${t[0]}</div>`;
+    d.onclick=()=>applyTheme(i);
+    g.appendChild(d);
+  });
+})();
+
+/* ========================================================================== *
+ *  AMBIENT BACKDROP  (§7) — plasma shader OR matrix rain, breathe-only (§1.3) *
+ * ========================================================================== */
+const cvs = $('#amb');
+let LITE = localStorage.getItem('scr_lite')==='1';
+let AMB  = localStorage.getItem('scr_amb') || 'plasma';
+const gl = cvs.getContext('webgl');
+let plasmaReady=false, U=null;
+if(gl){
+  const FS=`precision highp float;uniform vec2 uRes;uniform float uTime,uBright;uniform vec3 uS[5];
+  float h(vec2 p){p=fract(p*vec2(123.34,345.45));p+=dot(p,p+34.345);return fract(p.x*p.y);}
+  vec3 ramp(float n){n=clamp(n,0.,1.)*4.;vec3 c=mix(uS[0],uS[1],clamp(n,0.,1.));c=mix(c,uS[2],clamp(n-1.,0.,1.));c=mix(c,uS[3],clamp(n-2.,0.,1.));return mix(c,uS[4],clamp(n-3.,0.,1.));}
+  void main(){vec2 uv=gl_FragCoord.xy/uRes.xy;vec2 q=gl_FragCoord.xy/12.;q.y=(uRes.y/12.)-q.y;float t=uTime;
+  float v=sin(q.x*.0714+t)+sin(q.y*.143+t*.71)+sin((q.x+q.y)*.0625+t*.53)+sin(sqrt(q.x*q.x+q.y*q.y)*.118+t*.41);
+  float n=clamp((v+4.)*.115,0.,1.);vec3 col=ramp(n)*uBright;
+  col+=uS[4]*smoothstep(.86,1.02,n)*.28*uBright;
+  float vig=smoothstep(1.3,.3,length(uv-.5));gl_FragColor=vec4(col*vig,1.);}`;
+  const sh=(t,src)=>{const o=gl.createShader(t);gl.shaderSource(o,src);gl.compileShader(o);return o;};
+  const pr=gl.createProgram();
+  gl.attachShader(pr,sh(gl.VERTEX_SHADER,'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}'));
+  gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,FS));gl.linkProgram(pr);gl.useProgram(pr);
+  const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  const L=gl.getAttribLocation(pr,'p');gl.enableVertexAttribArray(L);gl.vertexAttribPointer(L,2,gl.FLOAT,false,0,0);
+  U={r:gl.getUniformLocation(pr,'uRes'),t:gl.getUniformLocation(pr,'uTime'),br:gl.getUniformLocation(pr,'uBright'),s:gl.getUniformLocation(pr,'uS')};
+  plasmaReady=true;
+}
+const hx=h=>[parseInt(h.slice(1,3),16)/255,parseInt(h.slice(3,5),16)/255,parseInt(h.slice(5,7),16)/255];
+/* matrix rain (2D) — reuses the same canvas via an overlay 2d ctx when selected */
+let mCanvas=null, r2=null, cols=[];
+function ensureMatrix(){
+  if(mCanvas) return;
+  mCanvas=document.createElement('canvas'); mCanvas.id='rain';
+  mCanvas.style.cssText='position:fixed;inset:0;z-index:0;width:100%;height:100%;pointer-events:none';
+  document.body.insertBefore(mCanvas, document.getElementById('crt'));
+  r2=mCanvas.getContext('2d');
+  sizeAll();   /* size the just-created canvas + build columns (boot's sizeAll ran before it existed) */
+}
+const GLY='01@#$%|<>=+-*/\\:.!?~^&';
+function sizeAll(){
+  const d=Math.min(window.devicePixelRatio||1,2);
+  cvs.width=innerWidth*d; cvs.height=innerHeight*d;
+  if(gl) gl.viewport(0,0,cvs.width,cvs.height);
+  if(mCanvas){ mCanvas.width=innerWidth*d; mCanvas.height=innerHeight*d;
+    const n=Math.floor(mCanvas.width/(14*d)); cols=[];
+    for(let i=0;i<n;i++) cols.push({y:Math.random()*mCanvas.height, sp:(4+Math.random()*11), len:6+16*Math.random(), x:i*14*d});
+    r2.font=`${13*d}px ui-monospace,monospace`; }
+}
+sizeAll(); addEventListener('resize', sizeAll);
+const t0=performance.now(); let lastNow=t0;
+function curStops(){ return (THEMES[+(localStorage.getItem('scr_theme')||0)]||THEMES[0])[1]; }
+(function loop(now){
+  const dt=Math.min((now-lastNow)/16.7,3); lastNow=now;
+  cvs.style.display = (!LITE && AMB==='plasma' && plasmaReady)?'block':'none';
+  if(mCanvas) mCanvas.style.display = (!LITE && AMB==='matrix')?'block':'none';
+  if(!LITE && AMB==='plasma' && plasmaReady){
+    const S=curStops().map(hx);
+    gl.uniform2f(U.r,cvs.width,cvs.height);
+    gl.uniform1f(U.t,(now-t0)/1000);
+    gl.uniform1f(U.br,.60+.05*Math.sin((now-t0)/1400));   /* FLARE LAW: breathe only */
+    gl.uniform3fv(U.s,new Float32Array(S.flat()));
+    gl.drawArrays(gl.TRIANGLES,0,3);
+  } else if(!LITE && AMB==='matrix'){
+    ensureMatrix();
+    const d=Math.min(window.devicePixelRatio||1,2), S=curStops();
+    r2.fillStyle='rgba(0,0,0,.10)'; r2.fillRect(0,0,mCanvas.width,mCanvas.height);
+    for(const c of cols){
+      const g=GLY[(Math.random()*GLY.length)|0];
+      r2.fillStyle=S[4]; r2.shadowColor=S[4]; r2.shadowBlur=12*d; r2.fillText(g,c.x,c.y);
+      r2.shadowBlur=0; r2.fillStyle=S[2]; r2.fillText(GLY[(Math.random()*GLY.length)|0], c.x, c.y-14*d*2);
+      c.y += c.sp*dt*d;
+      if(c.y>mCanvas.height+c.len*14*d){ c.y=-20; c.sp=4+Math.random()*11; }
+    }
+  }
+  requestAnimationFrame(loop);
+})(t0);
+
+/* ========================================================================== *
+ *  CRT  (§8) — presets; scanlines masked off the page in CSS                 *
+ * ========================================================================== */
+let CRT = Object.assign({glass:'off',scan:'off',cleanPage:true}, JSON.parse(localStorage.getItem('scr_crt')||'{}'));
+if(CRT.scan==='everywhere'){ CRT.scan='strong'; CRT.cleanPage=false; }   /* migrate old preset */
+const CRT_GLASS={off:{v:0,g:0,b:0},soft:{v:.40,g:.10,b:.30},full:{v:.62,g:.16,b:.62}};
+const CRT_SCAN={off:0,subtle:.14,strong:.24};
+function applyCRT(){
+  const g=CRT_GLASS[CRT.glass]||CRT_GLASS.off;
+  document.body.classList.toggle('fx-screen', (CRT.glass!=='off'||CRT.scan!=='off') && !LITE);
+  const r=document.documentElement.style;
+  r.setProperty('--crt-vignette',String(g.v));
+  r.setProperty('--crt-glare',String(g.g));
+  r.setProperty('--crt-bloom',String(g.b));
+  r.setProperty('--crt-scan',String(CRT_SCAN[CRT.scan]??0));
+  localStorage.setItem('scr_crt',JSON.stringify(CRT));
+  seg('#crtGlassSeg','crtg',CRT.glass); seg('#crtScanSeg','crts',CRT.scan);
+  const cp=$('#cleanPageTgl'); if(cp) cp.classList.toggle('on', CRT.cleanPage!==false);
+  updateScanMask();
+}
+/* scanline masking: 'Clean page' ON masks scanlines off the paper's band (§12);
+   OFF lets them run over the whole screen, page included. */
+function updateScanMask(){
+  const scan=document.getElementById('crtScan'); if(!scan) return;
+  const clear=()=>{ scan.style.webkitMaskImage='none'; scan.style.maskImage='none'; };
+  if(CRT.scan==='off' || CRT.cleanPage===false){ clear(); return; }
+  if(typeof view==='undefined' || view==='source'){ clear(); return; }
+  /* the sheet to protect: a rendered page in Page view, the WYSIWYG contents in Write view */
+  const pg = view==='render' ? (document.querySelector('#paper .page')||document.getElementById('paper'))
+                             : document.querySelector('#tui .toastui-editor-ww-container .toastui-editor-contents');
+  if(!pg){ clear(); return; }
+  const p=pg.getBoundingClientRect();
+  if(p.width<2){ clear(); return; }
+  const L=Math.max(0,Math.round(p.left-24)), R=Math.min(window.innerWidth,Math.round(p.right+24));
+  const m=`linear-gradient(90deg,#000 0 ${L}px, transparent ${L}px ${R}px, #000 ${R}px)`;
+  scan.style.webkitMaskImage=m; scan.style.maskImage=m;
+}
+addEventListener('resize',updateScanMask);
+
+/* ========================================================================== *
+ *  MARKDOWN RENDERER — zero-dependency, HTML-passthrough (font/colour spans)  *
+ *  Math + mermaid render via window.katex/temml/mermaid when present,         *
+ *  else degrade gracefully (§11).                                             *
+ * ========================================================================== */
+function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+/* Mermaid diagrams are rendered ONCE per diagram text into this cache (mermaid.render is async). render() emits the
+   cached SVG synchronously, so pagination measures the real diagram height; the first pass shows the source, then
+   postRender() fills the cache and re-renders. A failed diagram caches its error and shows it in the box. */
+const mermaidSvg=new Map();
+function renderMath(tex, block){
+  /* the WYSIWYG engine markdown-escapes what it stores: \int → \\int, x_1 → x\_1. Undo those escapes before KaTeX
+     sees the TeX, or every macro renders as text (found 2026-08-26). (\, thin-space is stripped by the engine itself.) */
+  tex=tex.replace(/\\([\\_*`\[\]#])/g,'$1');
+  try{
+    if(window.katex) return window.katex.renderToString(tex,{throwOnError:false,displayMode:block});
+  }catch(e){}
+  return `<span class="${block?'math-block':'math-inline'}">${escHtml(tex)}</span>`;
+}
+function inline(s){
+  // protect inline code first
+  const codes=[]; s=s.replace(/`([^`]+)`/g,(m,c)=>{codes.push(c);return ` C${codes.length-1} `;});
+  // protect inline math $...$
+  const maths=[]; s=s.replace(/\$([^$\n]+)\$/g,(m,c)=>{maths.push(c);return ` M${maths.length-1} `;});
+  // images  ![alt](src)
+  s=s.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g,(m,a,src,ti)=>`<img src="${src}" alt="${escHtml(a)}"${ti?` title="${escHtml(ti)}"`:''}>`);
+  // links  [text](href)
+  s=s.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g,(m,tx,href,ti)=>`<a href="${href}"${ti?` title="${escHtml(ti)}"`:''}>${tx}</a>`);
+  // bold / italic / strike  (leave any raw HTML spans untouched — passthrough)
+  s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/__([^_]+)__/g,'<strong>$1</strong>');
+  s=s.replace(/\*([^*\n]+)\*/g,'<em>$1</em>').replace(/(^|[^\w])_([^_\n]+)_/g,'$1<em>$2</em>');
+  s=s.replace(/~~([^~]+)~~/g,'<s>$1</s>');
+  // restore math + code
+  s=s.replace(/ M(\d+) /g,(m,i)=>renderMath(maths[+i],false));
+  s=s.replace(/ C(\d+) /g,(m,i)=>`<code>${escHtml(codes[+i])}</code>`);
+  return s;
+}
+/* Sanitise rendered HTML before it hits innerHTML: keep the inline style/colour/font spans that are the whole
+   point, strip anything executable. (The WYSIWYG engine sanitises its own side; this covers Page view + export,
+   so opening someone else's .md can't run script.) */
+const SAN_KILL_TAGS=new Set(['SCRIPT','IFRAME','OBJECT','EMBED','FORM','LINK','META','BASE','SVG','MATH','FRAME','FRAMESET','APPLET']);
+function sanitizeHtml(html){
+  const tpl=document.createElement('template'); tpl.innerHTML=String(html);
+  const walk=root=>{ const els=[...root.querySelectorAll('*')];
+    for(const el of els){
+      if(SAN_KILL_TAGS.has(el.tagName)){ el.remove(); continue; }
+      for(const a of [...el.attributes]){
+        const n=a.name.toLowerCase(), v=a.value;
+        if(n.startsWith('on')){ el.removeAttribute(a.name); continue; }
+        if((n==='href'||n==='src'||n==='xlink:href')){ const t=v.trim().toLowerCase();
+          if(t.startsWith('javascript:')||t.startsWith('vbscript:')||/^data:text\/html/i.test(t)) el.removeAttribute(a.name); }
+        if(n==='style' && /expression\s*\(|javascript:|url\s*\(\s*['\"]?\s*javascript:/i.test(v)) el.removeAttribute(a.name);
+      }
+    } };
+  walk(tpl.content); return tpl.innerHTML;
+}
+function md2html(src){
+  const lines=src.replace(/\r\n?/g,'\n').split('\n');
+  let out=[], i=0;
+  const isBlank=l=>/^\s*$/.test(l);
+  while(i<lines.length){
+    let l=lines[i];
+    // fenced code / mermaid
+    let fence=l.match(/^\s*(`{3,}|~{3,})\s*(\S+)?\s*$/);
+    if(fence){
+      const mark=fence[1][0], lang=(fence[2]||'').trim(); const buf=[]; i++;
+      while(i<lines.length && !new RegExp('^\\s*'+mark+'{3,}\\s*$').test(lines[i])){ buf.push(lines[i]); i++; }
+      i++; // closing fence
+      if(lang==='mermaid'){
+        const txt=buf.join('\n'), c=mermaidSvg.get(txt);
+        if(c&&c.svg) out.push(`<div class="mermaid">${c.svg}</div>`);
+        else if(c&&c.error) out.push(`<div class="mermaid-src">[mermaid error: ${escHtml(c.error)}]\n${escHtml(txt)}</div>`);
+        else if(window.mermaid) out.push(`<pre class="mermaid">${escHtml(txt)}</pre>`);
+        else out.push(`<div class="mermaid-src">[mermaid — renderer not loaded]\n${escHtml(txt)}</div>`);
+      } else {
+        out.push(`<pre>${lang?`<span class="lang">${escHtml(lang)}</span>`:''}<code>${escHtml(buf.join('\n'))}</code></pre>`);
+      }
+      continue;
+    }
+    // block math  $$ ... $$
+    if(/^\s*\$\$\s*$/.test(l)){
+      const buf=[]; i++;
+      while(i<lines.length && !/^\s*\$\$\s*$/.test(lines[i])){ buf.push(lines[i]); i++; } i++;
+      out.push(renderMath(buf.join('\n'),true)); continue;
+    }
+    if(isBlank(l)){ i++; continue; }
+    // manual page break: a line with just \newpage or \pagebreak
+    if(/^\s*\\{1,2}(newpage|pagebreak)\s*$/i.test(l)){ out.push('<div class="pagebreak"></div>'); i++; continue; }   /* engine may escape the backslash */
+    // heading
+    let h=l.match(/^(#{1,6})\s+(.*)$/);
+    if(h){ const n=h[1].length; out.push(`<h${n}>${inline(h[2].trim())}</h${n}>`); i++; continue; }
+    // hr
+    if(/^\s*([-*_])(\s*\1){2,}\s*$/.test(l)){ out.push('<hr>'); i++; continue; }
+    // blockquote (consume consecutive)
+    if(/^\s*>/.test(l)){
+      const buf=[]; while(i<lines.length && /^\s*>/.test(lines[i])){ buf.push(lines[i].replace(/^\s*>\s?/,'')); i++; }
+      out.push(`<blockquote>${md2html(buf.join('\n'))}</blockquote>`); continue;
+    }
+    // table  | a | b |  with a | --- | --- | separator on next line
+    if(/^\s*\|(.+)\|\s*$/.test(l) && i+1<lines.length && /^\s*\|?\s*:?-{2,}.*\|/.test(lines[i+1])){
+      const rows=[]; const head=l;
+      i+=2; const body=[];
+      while(i<lines.length && /^\s*\|(.+)\|\s*$/.test(lines[i])){ body.push(lines[i]); i++; }
+      const cells=r=>r.replace(/^\s*\|/,'').replace(/\|\s*$/,'').split('|').map(c=>c.trim());
+      let html='<table><thead><tr>'+cells(head).map(c=>`<th>${inline(c)}</th>`).join('')+'</tr></thead><tbody>';
+      body.forEach(r=>{ html+='<tr>'+cells(r).map(c=>`<td>${inline(c)}</td>`).join('')+'</tr>'; });
+      html+='</tbody></table>'; out.push(html); continue;
+    }
+    // lists (nested by indent)
+    if(/^\s*([-*+]|\d+[.)])\s+/.test(l)){
+      const {html,next}=parseList(lines,i); out.push(html); i=next; continue;
+    }
+    // raw HTML block passthrough (line starts with a tag)
+    if(/^\s*<\/?[a-zA-Z][\w-]*(\s|>|\/)/.test(l)){
+      const buf=[]; while(i<lines.length && !isBlank(lines[i])){ buf.push(lines[i]); i++; }
+      out.push(buf.join('\n')); continue;
+    }
+    // paragraph (consume until blank)
+    const buf=[]; while(i<lines.length && !isBlank(lines[i]) &&
+      !/^(#{1,6}\s|\s*>|\s*([-*_])(\s*\2){2,}\s*$|\s*([-*+]|\d+[.)])\s+|\s*(`{3,}|~{3,}))/.test(lines[i])){ buf.push(lines[i]); i++; }
+    out.push(`<p>${inline(buf.join('\n').trim())}</p>`);
+  }
+  return out.join('\n');
+}
+function parseList(lines,start){
+  // returns rendered list html + index after the list. Handles one/two indent levels.
+  function build(idx,indent){
+    const ordered=/^\s*\d+[.)]\s+/.test(lines[idx]);
+    let html = ordered?'<ol>':'<ul>'; let i=idx;
+    while(i<lines.length){
+      const m=lines[i].match(/^(\s*)([-*+]|\d+[.)])\s+(.*)$/);
+      if(!m) break;
+      const ind=m[1].length;
+      if(ind<indent) break;
+      if(ind>indent){ // nested — attach to previous li
+        const sub=build(i,ind); html=html.replace(/<\/li>\s*$/,'')+sub.html+'</li>'; i=sub.next; continue;
+      }
+      html+=`<li>${inline(m[3])}</li>`; i++;
+    }
+    html += ordered?'</ol>':'</ul>';
+    return {html,next:i};
+  }
+  const firstIndent=(lines[start].match(/^(\s*)/)[1]||'').length;
+  return build(start,firstIndent);
+}
+function postRender(){
+  if(!window.mermaid) return;
+  const pending=[...new Set([...$('#paper').querySelectorAll('pre.mermaid')].map(n=>n.textContent).filter(t=>!mermaidSvg.has(t)))];
+  if(!pending.length) return;
+  const stamp=Date.now().toString(36);
+  Promise.all(pending.map((txt,i)=>window.mermaid.render('scr-mmd-'+stamp+'-'+i, txt)
+      .then(r=>mermaidSvg.set(txt,{svg:r.svg}))
+      .catch(e=>mermaidSvg.set(txt,{error:String((e&&e.message)||e||'render failed').replace(/\s+/g,' ').slice(0,200)}))))
+    .then(()=>{ if(view==='render') render(); });   /* second pass: real SVG heights → correct page breaks */
+}
+
+/* ========================================================================== *
+ *  EDITOR STATE                                                              *
+ * ========================================================================== */
+const paper=$('#paper');
+let dirty=false, curName=localStorage.getItem('scr_name')||'untitled.md';
+let tabs=[], activeTab=0, fileHandle=null;    /* multi-doc: each tab = {name,content,handle,dirty} */
+let view=localStorage.getItem('scr_view')||'write';
+if(view==='split') view='write';               /* v1 stored views migrate to the WYSIWYG surface */
+/* ---- the editing engine: Toast UI Editor (ProseMirror) — real WYSIWYG ⇄ markdown ---- */
+const TUI=window.toastui&&window.toastui.Editor;
+let suppressChange=false, changeTimer=null;
+const editor=new TUI({
+  el:$('#tui'), height:'100%', initialEditType:'wysiwyg', previewStyle:'vertical',
+  hideModeSwitch:true, toolbarItems:[], usageStatistics:false, theme:'dark', autofocus:false,
+  plugins:[TUI.plugin.colorSyntax, TUI.plugin.codeSyntaxHighlight].filter(Boolean),
+  hooks:{ addImageBlobHook:(blob,cb)=>{ const rd=new FileReader(); rd.onload=()=>{ cb(rd.result,'pasted image'); toast('image embedded (base64)'); }; rd.readAsDataURL(blob); } },
+  events:{ change:()=>onEditorChange() }
+});
+/* Soft-wrapped Markdown (lines broken mid-sentence at ~80-100 cols, the way hand-written .md usually
+   is) reads as HARD line breaks to a WYSIWYG engine. Reflow each paragraph onto one line on the way
+   in — Word-style — leaving fences, lists, tables, quotes, headings, HTML blocks and deliberate hard
+   breaks (two trailing spaces / backslash) exactly as they are. Idempotent. */
+function unwrapSoft(md){
+  const L=String(md||'').replace(/\r\n?/g,'\n').split('\n'), out=[]; let inFence=false, fenceCh='';
+  const blockStart=l=>/^\s*$/.test(l)||/^\s*(#{1,6}\s|>|[-*+]\s|\d+[.)]\s|\||`{3,}|~{3,}|([-*_])(\s*\1){2,}\s*$|=+\s*$|\\{1,2}(newpage|pagebreak)\s*$|\$\$\s*$)/.test(l)
+                      ||/^\s*<\/?(div|p|table|thead|tbody|tr|td|th|pre|ul|ol|li|blockquote|h[1-6]|hr|img|br|section|figure|details|summary|center)\b/i.test(l);
+  for(const l of L){
+    const f=l.match(/^\s*(`{3,}|~{3,})/);
+    if(f){ if(!inFence){ inFence=true; fenceCh=f[1][0]; } else if(f[1][0]===fenceCh){ inFence=false; } out.push(l); continue; }
+    if(inFence){ out.push(l); continue; }
+    const prev=out.length?out[out.length-1]:null;
+    if(prev!==null && !blockStart(l) && !blockStart(prev) && !/( {2,}|\\)$/.test(prev)){
+      out[out.length-1]=prev.replace(/\s+$/,'')+' '+l.replace(/^\s+/,'');
+    } else out.push(l);
+  }
+  return out.join('\n');
+}
+/* `src` facade — every v1 code path (tabs, the assistant's tools, export, counts) keeps using src.value */
+const src={
+  get value(){ return editor.getMarkdown(); },
+  set value(v){ suppressChange=true; try{ editor.setMarkdown(unwrapSoft(v||''), false); } finally{ suppressChange=false; } },
+  focus(){ try{ editor.focus(); }catch(e){} }
+};
+function render(){
+  const frag=document.createElement('div'); frag.innerHTML=sanitizeHtml(md2html(src.value));
+  const blocks=[...frag.children];
+  paper.innerHTML='';
+  /* paginate at 1:1 — Chrome's `zoom` mismatches getBoundingClientRect (scaled) vs
+     scrollHeight (unscaled), which would scatter blocks onto one-per-page at any zoom≠1.
+     Measure with zoom normalized, then restore the display zoom. */
+  const prevZoom=paper.style.zoom; paper.style.zoom='1';
+  const mk=()=>{ const p=document.createElement('div'); p.className='page'; paper.appendChild(p); return p; };
+  let page=mk();
+  const pageW=page.getBoundingClientRect().width || 816;
+  const targetH=pageW*11/8.5;                        /* Letter aspect → page content height */
+  for(const b of blocks){
+    if(b.classList && b.classList.contains('pagebreak')){ if(page.childElementCount>0) page=mk(); continue; }
+    page.appendChild(b);
+    if(page.scrollHeight>targetH && page.childElementCount>1){   /* block overflowed → push to next page */
+      page.removeChild(b); page=mk(); page.appendChild(b);
+    }
+  }
+  if(page.childElementCount===0 && paper.childElementCount>1) paper.removeChild(page);
+  paper.style.zoom=prevZoom;                          /* restore CSS-var zoom */
+  postRender();
+}
+function counts(){
+  const t=src.value.trim(); const w=t?t.split(/\s+/).length:0;
+  $('#stCounts').textContent=`${w} words · ${src.value.length} chars`;
+}
+function markDirty(d){
+  dirty=d; if(tabs[activeTab]) tabs[activeTab].dirty=d;
+  $('#saveState').textContent=d?'unsaved':'saved';
+  $('#saveDot').classList.toggle('live',d);
+  $('#docname').innerHTML= escHtml(curName)+(d?' <span class="dirty">●</span>':'');
+  const chip=document.querySelector('#tabbar .tab.on'); if(chip) chip.classList.toggle('dirty',d);
+}
+/* three views: write (WYSIWYG sheet) · source (markdown + live preview) · render (paginated Page) */
+function setView(v){
+  if(v!=='write'&&v!=='source'&&v!=='render') v='write';
+  view=v; localStorage.setItem('scr_view',v);
+  const e=$('#editPane'), r=$('#renderPane');
+  e.style.display = v==='render'?'none':'block';
+  r.style.display = v==='render'?'block':'none';   /* block so #paper grows to full content height */
+  if(v!=='render'){ const want=(v==='write')?'wysiwyg':'markdown'; if((editor.isWysiwygMode()?'wysiwyg':'markdown')!==want) editor.changeMode(want,true); }
+  document.querySelectorAll('#viewSeg button').forEach(b=>b.classList.toggle('on',b.dataset.view===v));
+  $('#stView').textContent=v;
+  if(v==='render') render();
+  setTimeout(updateScanMask,50);
+  if(typeof mmdSchedule==='function') mmdSchedule(80);
+}
+function onEditorChange(){
+  if(suppressChange) return;
+  if(!burstOpen){ burstOpen=true; snap(lastSettled); }      /* first keystroke after idle → snapshot the pre-burst doc */
+  markDirty(true);
+  clearTimeout(changeTimer);
+  changeTimer=setTimeout(()=>{ if(tabs[activeTab]) tabs[activeTab].content=src.value; counts(); persistTabs(); },150);
+  clearTimeout(settleTimer);
+  settleTimer=setTimeout(()=>{ lastSettled=src.value; burstOpen=false; },1500);
+}
+/* ---- document-level undo: coarse snapshots that reach behind what the engine's keystroke history
+   can't — the assistant's edits, file loads, view switches. Engine undo runs first; this catches the rest. ---- */
+const HIST_MAX=50; let lastSettled='', burstOpen=false, settleTimer=null;
+function histOf(){ const t=tabs[activeTab]; if(!t) return null; t.undo=t.undo||[]; t.redo=t.redo||[]; return t; }
+function snap(md){ const t=histOf(); if(!t) return; if(md==null) md=src.value; if(t.undo.length && t.undo[t.undo.length-1]===md) return; t.undo.push(md); if(t.undo.length>HIST_MAX) t.undo.shift(); t.redo=[]; }
+function restoreMd(md){ src.value=md; if(tabs[activeTab]) tabs[activeTab].content=md; lastSettled=md; burstOpen=false; markDirty(true); counts(); if(view==='render') render(); persistTabs(); }
+function pmView(){ try{ return editor.isWysiwygMode()?editor.wwEditor.view:editor.mdEditor.view; }catch(e){ return null; } }
+function engineCanUndo(){ const h=window.toastui&&toastui.pmHistory, v=pmView(); return !!(h&&v&&h.undoDepth(v.state)>0); }
+function engineCanRedo(){ const h=window.toastui&&toastui.pmHistory, v=pmView(); return !!(h&&v&&h.redoDepth(v.state)>0); }
+function docUndo(){ const t=histOf(); const cur=src.value; while(t&&t.undo.length&&t.undo[t.undo.length-1]===cur) t.undo.pop();   /* skip no-op states */
+  if(!t||!t.undo.length){ toast('nothing more to undo'); return; } t.redo.push(cur); restoreMd(t.undo.pop()); toast('undo · '+t.undo.length+' step'+(t.undo.length===1?'':'s')+' left'); }
+/* a document LOAD (tab switch, open, new) must not be undoable — rebuild both engine views' state so
+   their history starts empty; otherwise Ctrl+Z could pull the previous tab's text into this one */
+function resetEngineHistory(){
+  try{ const ES=window.toastui&&toastui.pm&&toastui.pm.EditorState; if(!ES) return;
+    for(const ed of [editor.wwEditor, editor.mdEditor]){ const v=ed&&ed.view; if(!v) continue;
+      v.updateState(ES.create({doc:v.state.doc, plugins:v.state.plugins, selection:v.state.selection})); }
+  }catch(e){ console.warn('resetEngineHistory',e); }
+}
+function docRedo(){ const t=histOf(); if(!t||!t.redo.length){ toast('nothing to redo'); return; } t.undo.push(src.value); restoreMd(t.redo.pop()); }
+function doUndo(){ if(engineCanUndo()){ const v=pmView(); toastui.pmHistory.undo(v.state,v.dispatch); v.focus(); } else docUndo(); }
+function doRedo(){ if(engineCanRedo()){ const v=pmView(); toastui.pmHistory.redo(v.state,v.dispatch); v.focus(); } else docRedo(); }
+$('#btnUndo').onclick=doUndo; $('#btnRedo').onclick=doRedo;
+
+/* ========================================================================== *
+ *  TOOLBAR ACTIONS — operate on the source textarea selection                *
+ * ========================================================================== */
+/* toolbar drives the engine directly — works identically in Write (WYSIWYG) and Source */
+function afterEdit(){ markDirty(true); counts(); if(view==='render') render(); persistTabs(); }
+const ex=(cmd,payload)=>{ try{ editor.exec(cmd,payload); }catch(e){ console.warn('exec',cmd,e); } src.focus(); afterEdit(); };
+/* font / size = an inline <span style> — valid Markdown (raw HTML). In Write mode the engine models
+   this as a ProseMirror `span` mark {htmlAttrs:{style}, htmlInline:true}, so apply it as a real mark
+   (replaceSelection would escape the HTML). In Source mode, raw HTML text is fine. */
+function mergeStyle(a,b){ const o={}; (String(a||'')+';'+b).split(';').forEach(kv=>{ const i=kv.indexOf(':'); if(i>0) o[kv.slice(0,i).trim()]=kv.slice(i+1).trim(); }); return Object.entries(o).map(([k,v])=>k+':'+v).join(';'); }
+function wrapSpan(style,placeholder){
+  if(editor.isWysiwygMode()){
+    const view=editor.wwEditor&&editor.wwEditor.view; if(!view){ toast('editor not ready'); return; }
+    const st=view.state, from=st.selection.from, to=st.selection.to;
+    if(from===to){ toast('select some text first'); return; }
+    const mt=st.schema.marks.span; if(!mt){ toast('inline styling unavailable in this engine build'); return; }
+    let existing=''; st.doc.nodesBetween(from,to,n=>{ if(n.isText){ const m=n.marks.find(x=>x.type===mt); if(m&&m.attrs.htmlAttrs&&m.attrs.htmlAttrs.style) existing=m.attrs.htmlAttrs.style; } });
+    const merged=mergeStyle(existing,style);
+    view.dispatch(st.tr.removeMark(from,to,mt).addMark(from,to,mt.create({htmlAttrs:{style:merged},htmlInline:true})));
+    view.focus(); afterEdit(); return;
+  }
+  const sel=editor.getSelectedText()||placeholder;
+  editor.replaceSelection(`<span style="${style}">${sel}</span>`); src.focus(); afterEdit();
+}
+const MD={
+  bold:()=>ex('bold'), italic:()=>ex('italic'), strike:()=>ex('strike'), code:()=>ex('code'),
+  h1:()=>ex('heading',{level:1}), h2:()=>ex('heading',{level:2}), h3:()=>ex('heading',{level:3}),
+  ul:()=>ex('bulletList'), ol:()=>ex('orderedList'), quote:()=>ex('blockQuote'), hr:()=>ex('hr'),
+  link:()=>{ const u=prompt('Link URL:','https://'); if(u){ const t=editor.getSelectedText()||u; ex('addLink',{linkUrl:u,linkText:t}); } },
+  image:()=>{ const u=prompt('Image URL (or just paste an image straight into the page):',''); if(u) ex('addImage',{imageUrl:u,altText:'image'}); },
+  table:()=>ex('addTable',{rowCount:3,columnCount:2}),
+  fence:()=>ex('codeBlock'),
+  math:()=>{ editor.replaceSelection('$'+(editor.getSelectedText()||'x^2')+'$'); src.focus(); afterEdit(); },
+  pagebreak:()=>{ editor.replaceSelection('\n\n\\newpage\n\n'); src.focus(); afterEdit(); }
+};
+/* Page is a read-only preview; formatting drops you back onto the writing surface */
+function toEditable(){ if(view==='render') setView('write'); }
+document.querySelectorAll('.tbtn[data-md]').forEach(btn=>{
+  btn.addEventListener('click',()=>{ toEditable(); const fn=MD[btn.dataset.md]; if(fn)fn(); });
+});
+/* font / size = inline spans (masterclass §2 endorses this); colour = the engine's own colour plugin */
+$('#fontSel').onchange=e=>{ if(e.target.value){ toEditable(); wrapSpan(`font-family:${e.target.value}`,'styled text'); } e.target.value=''; };
+$('#sizeSel').onchange=e=>{ if(e.target.value){ toEditable(); wrapSpan(`font-size:${e.target.value}`,'sized text'); } e.target.value=''; };
+$('#colorSel').onchange=e=>{ toEditable(); ex('color',{selectedColor:e.target.value}); };
+/* image paste/drop is handled by the engine's addImageBlobHook (base64 inline) */
+
+/* ========================================================================== *
+ *  FIND & REPLACE (Ctrl+F) — works in Write and Source; native find navigates,*
+ *  string ops do the replacing (mode-independent)                            *
+ * ========================================================================== */
+const findBar=$('#findBar'), findInput=$('#findInput'), replInput=$('#replInput'), findCount=$('#findCount');
+const reEsc=t=>String(t).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+function findMatchCount(){ const t=findInput.value; if(!t){ findCount.textContent='0'; return 0; }
+  const n=(src.value.match(new RegExp(reEsc(t),'gi'))||[]).length; findCount.textContent=String(n); return n; }
+function openFind(){ findBar.classList.add('open'); const selText=(editor.getSelectedText&&editor.getSelectedText())||''; if(selText && selText.length<80){ findInput.value=selText; } findInput.focus(); findInput.select(); findMatchCount(); }
+function closeFind(){ findBar.classList.remove('open'); try{ if(view!=='render') editor.focus(); }catch(e){} }
+function findStep(back){ const t=findInput.value; if(!t) return;
+  if(view==='render'){ setView('write'); }
+  try{ window.getSelection().collapseToStart(); }catch(e){}
+  const ok=window.find(t,false,!!back,true,false,false,false);   /* case-insensitive, wrap */
+  if(!ok){ toast('no match for "'+t+'"'); } }
+function replaceOne(){ const t=findInput.value; if(!t) return; const sel=(editor.getSelectedText&&editor.getSelectedText())||'';
+  if(sel.toLowerCase()===t.toLowerCase()){ snap(); editor.replaceSelection(replInput.value); afterEdit(); }
+  findStep(false); findMatchCount(); }
+function replaceAll(){ const t=findInput.value; if(!t){ return; } const n=findMatchCount(); if(!n){ toast('nothing to replace'); return; }
+  snap(); src.value=src.value.replace(new RegExp(reEsc(t),'gi'), replInput.value); afterEdit(); findMatchCount(); toast('replaced '+n+' match'+(n===1?'':'es')); }
+findInput.addEventListener('input',findMatchCount);
+findInput.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); findStep(e.shiftKey); } else if(e.key==='Escape'){ e.preventDefault(); closeFind(); } });
+replInput.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); replaceOne(); } else if(e.key==='Escape'){ e.preventDefault(); closeFind(); } });
+$('#findNext').onclick=()=>findStep(false); $('#findPrev').onclick=()=>findStep(true);
+$('#replOne').onclick=replaceOne; $('#replAll').onclick=replaceAll; $('#findClose').onclick=closeFind;
+
+/* ========================================================================== *
+ *  FILES  — new / open / save (File System Access API w/ download fallback)  *
+ * ========================================================================== */
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),1900); }
+
+/* ---- TABS (multi-doc) ----------------------------------------------------- */
+let persistTimer=null;
+function persistTabs(){
+  clearTimeout(persistTimer);
+  persistTimer=setTimeout(()=>{ try{
+    localStorage.setItem('scr_tabs', JSON.stringify(tabs.map(t=>({name:t.name,content:t.content,dirty:t.dirty}))));
+    localStorage.setItem('scr_active', String(activeTab));
+  }catch(e){} },250);
+}
+function commitActive(){ const t=tabs[activeTab]; if(t){ t.content=src.value; t.name=curName; t.handle=fileHandle; t.dirty=dirty; } }
+function loadActive(){
+  const t=tabs[activeTab]; if(!t) return;
+  src.value=t.content; curName=t.name; fileHandle=t.handle||null;
+  lastSettled=src.value; burstOpen=false; resetEngineHistory();
+  markDirty(!!t.dirty); counts(); if(view==='render') render();
+}
+function renderTabs(){
+  const bar=$('#tabbar'); if(!bar) return; bar.innerHTML='';
+  tabs.forEach((t,i)=>{
+    const el=document.createElement('div');
+    el.className='tab'+(i===activeTab?' on':'')+(t.dirty?' dirty':'');
+    const dot=document.createElement('span'); dot.className='dot';
+    const nm=document.createElement('span'); nm.className='nm'; nm.textContent=t.name;
+    const x=document.createElement('span'); x.className='x'; x.textContent='✕'; x.title='Close';
+    el.appendChild(dot); el.appendChild(nm); el.appendChild(x);
+    el.onclick=e=>{ if(e.target===x){ closeTab(i); } else { switchTab(i); } };
+    bar.appendChild(el);
+  });
+  const add=document.createElement('button'); add.className='tabadd'; add.title='New tab'; add.textContent='+';
+  add.onclick=()=>newTab(); bar.appendChild(add);
+}
+function switchTab(i){ if(i===activeTab || !tabs[i]) return; commitActive(); activeTab=i; loadActive(); renderTabs(); persistTabs(); src.focus(); }
+function newTab(content,name,handle){
+  commitActive();
+  tabs.push({name:name||'untitled.md', content:content||'', handle:handle||null, dirty:false});
+  activeTab=tabs.length-1; loadActive(); renderTabs(); persistTabs(); src.focus(); toast('new tab');
+}
+function closeTab(i){
+  if(!tabs[i]) return;
+  if(tabs[i].dirty && !confirm('Close "'+tabs[i].name+'" with unsaved changes?')) return;
+  const wasActive=(i===activeTab);
+  if(!wasActive) commitActive();
+  tabs.splice(i,1);
+  if(!tabs.length) tabs.push({name:'untitled.md',content:'',handle:null,dirty:false});
+  if(wasActive){ activeTab=Math.min(i,tabs.length-1); loadActive(); }
+  else if(i<activeTab){ activeTab--; }
+  renderTabs(); persistTabs();
+}
+function afterSave(){ const t=tabs[activeTab]; if(t){ t.name=curName; t.handle=fileHandle; t.dirty=false; } markDirty(false); renderTabs(); persistTabs(); }
+
+/* ---- FILES — new / open / save (new/open create tabs) --------------------- */
+function newDoc(){ newTab(); }
+async function openDoc(){
+  if(window.showOpenFilePicker){
+    try{
+      const [h]=await window.showOpenFilePicker({types:[{description:'Markdown',accept:{'text/markdown':['.md','.markdown','.txt']}}]});
+      const f=await h.getFile(); newTab(await f.text(), f.name, h); toast('opened '+f.name); return;
+    }catch(e){ if(e.name==='AbortError') return; }
+  }
+  $('#fileIn').click();
+}
+$('#fileIn').onchange=e=>{ const f=e.target.files[0]; if(!f)return; const rd=new FileReader();
+  rd.onload=()=>{ newTab(rd.result, f.name); toast('opened '+f.name); }; rd.readAsText(f); e.target.value=''; };
+async function saveDoc(){
+  const text=src.value;
+  if(fileHandle && fileHandle.createWritable){
+    try{ const w=await fileHandle.createWritable(); await w.write(text); await w.close(); afterSave(); toast('saved '+curName); return; }catch(e){}
+  }
+  if(window.showSaveFilePicker){
+    try{
+      const h=await window.showSaveFilePicker({suggestedName:curName,types:[{description:'Markdown',accept:{'text/markdown':['.md']}}]});
+      fileHandle=h; const w=await h.createWritable(); await w.write(text); await w.close();
+      curName=h.name; afterSave(); toast('saved '+curName); return;
+    }catch(e){ if(e.name==='AbortError') return; }
+  }
+  download(curName, text, 'text/markdown'); afterSave(); toast('downloaded '+curName);
+}
+/* Save As: write a COPY to a new file and point this tab at it — the original file is never touched */
+async function saveAsDoc(){
+  const text=src.value;
+  const base=curName.replace(/\.(md|markdown|txt)$/i,''); const suggested=base+' copy.md';
+  if(window.showSaveFilePicker){
+    try{
+      const h=await window.showSaveFilePicker({suggestedName:suggested,types:[{description:'Markdown',accept:{'text/markdown':['.md']}}]});
+      const w=await h.createWritable(); await w.write(text); await w.close();
+      fileHandle=h; curName=h.name; afterSave(); toast('saved copy as '+curName); return;
+    }catch(e){ if(e.name==='AbortError') return; }
+  }
+  const nm=prompt('Save a copy as:',suggested); if(!nm) return;
+  fileHandle=null; curName=nm; download(nm, text, 'text/markdown'); afterSave(); toast('downloaded copy '+nm);
+}
+function download(name,data,type){
+  const b=new Blob([data],{type:type||'text/plain'}); const u=URL.createObjectURL(b);
+  const a=document.createElement('a'); a.href=u; a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(u),2000);
+}
+/* self-contained HTML export — rendered page + minimal print-clean styles */
+function exportHTML(){
+  const body=sanitizeHtml(md2html(src.value));
+  const title=curName.replace(/\.(md|markdown|txt)$/,'');
+  const html=`<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>${escHtml(title)}</title>
+<style>
+:root{--ink:#1a1a20;--dim:#5b5b66;--line:#d8d6cf;--accent:#7a4a00}
+*{box-sizing:border-box}body{margin:0;background:#e9e8e2;color:var(--ink);
+ font:16px/1.65 -apple-system,"Avenir Next",Segoe UI,system-ui,sans-serif}
+main{max-width:80ch;margin:32px auto;padding:44px 52px;background:#f7f6f2;border:1px solid var(--line);
+ border-radius:6px;box-shadow:0 20px 50px rgba(0,0,0,.12)}
+h1,h2,h3,h4{line-height:1.25;margin:1.4em 0 .5em}h1{font-size:1.9em;border-bottom:2px solid var(--line);padding-bottom:.25em}
+h2{font-size:1.5em;border-bottom:1px solid var(--line);padding-bottom:.2em}h3{font-size:1.22em}
+a{color:var(--accent)}code{font:.88em ui-monospace,Menlo,Consolas,monospace;background:#ecebe4;border:1px solid var(--line);border-radius:4px;padding:.08em .35em}
+pre{background:#1c1b26;color:#e7e6ec;border-radius:9px;padding:16px 18px;overflow:auto}pre code{background:none;border:0;padding:0}
+blockquote{margin:1em 0;padding:.4em 1.1em;border-left:4px solid var(--accent);color:var(--dim);background:#efeee7;border-radius:0 6px 6px 0}
+table{border-collapse:collapse;width:100%}th,td{border:1px solid var(--line);padding:7px 11px}th{background:#ecebe4}
+img{max-width:100%;height:auto;border-radius:6px}hr{border:0;border-top:2px solid var(--line);margin:1.6em 0}
+.math-inline,.math-block{font-family:ui-monospace,monospace;background:#efeee7;border-radius:4px;padding:0 .3em}
+@media print{@page{margin:18mm}body{background:#fff}main{max-width:none;margin:0;padding:0;border:0;box-shadow:none;background:#fff}}
+</style></head><body><main>${body}</main></body></html>`;
+  download(title+'.html', html, 'text/html'); toast('exported '+title+'.html');
+}
+
+/* ========================================================================== *
+ *  AI POPUP (Ctrl+A) — endpoint-pluggable, sends the document as context     *
+ * ========================================================================== */
+/* ---- AI server + model config (the drawer is the source of truth) -------- */
+const epInput=$('#aiEndpoint2'), modelList=$('#aiModelList'), modelFilter=$('#aiModelFilter'), cfgStatus=$('#aiCfgStatus'), aiReadout=$('#aiReadout');
+function getEndpoint(){ return (localStorage.getItem('scr_ai_endpoint')||(typeof LOCAL!=='undefined'&&LOCAL.endpoint)||'').trim(); }
+function getModel(){ return localStorage.getItem('scr_ai_model')||''; }
+function updateReadout(){
+  const ep=getEndpoint(), m=getModel()||'auto';
+  aiReadout.textContent = ep ? ('◆ '+ep+'  ·  '+m) : 'no server set — open ⚙ to configure';
+}
+function saveEndpoint(v){ localStorage.setItem('scr_ai_endpoint',(v||'').trim()); updateReadout(); }
+epInput.value=getEndpoint();
+epInput.onchange=()=>saveEndpoint(epInput.value);
+/* lock — pin the server, disable edits */
+function setAiLock(on){
+  localStorage.setItem('scr_ai_locked',on?'1':'0');
+  $('#aiLockTgl').classList.toggle('on',on);
+  epInput.disabled=on; epInput.style.opacity=on?'.5':'1';
+}
+$('#aiLockTgl').onclick=()=>setAiLock(localStorage.getItem('scr_ai_locked')!=='1');
+/* model picker — a filterable, scrollable list INSIDE the drawer. (A native <select> holding 38 fleet
+   models popped its menu off the screen on Hyprland — the author, 2026-08-26.) Loaded models sort first
+   and are marked in text, never by colour alone. */
+let modelIds=[], modelLoaded=new Set();
+function escAttr(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+function renderModels(){
+  const cur=getModel(), q=(modelFilter.value||'').trim().toLowerCase();
+  const rows=[{id:'',label:'(auto — first loaded)'}].concat(modelIds.map(id=>({id,label:id})))
+    .filter(r=>!q||r.label.toLowerCase().includes(q));
+  modelList.innerHTML=rows.map(r=>{
+    const on=r.id===cur, ld=modelLoaded.has(r.id);
+    return `<div class="model-item${on?' on':''}${ld?' loaded':''}" data-id="${escAttr(r.id)}" title="${escAttr(r.label)}">`+
+      `<span class="mid">${on?'✓ ':''}${escHtml(r.label)}</span>${ld?'<span class="st">● loaded</span>':''}</div>`;
+  }).join('');
+  modelList.style.display=rows.length?'':'none';
+}
+modelList.onclick=e=>{ const it=e.target.closest('.model-item'); if(!it) return;
+  localStorage.setItem('scr_ai_model',it.dataset.id); updateReadout(); renderModels(); };
+modelFilter.oninput=renderModels;
+(function seedModel(){ const m=getModel(); if(m) modelIds=[m]; renderModels(); })();
+/* poll the server for its models → fill the list. LM Studio also answers /api/v0/models with a
+   loaded / not-loaded state per model — used when present, silently ignored otherwise. */
+async function pollModels(){
+  const ep=getEndpoint();
+  if(!ep){ cfgStatus.textContent='set an endpoint first'; return; }
+  const base=apiBase(normEndpoint(ep));
+  cfgStatus.textContent='polling '+base+'/models …';
+  try{
+    const r=await fetch(base+'/models');
+    if(!r.ok){ cfgStatus.textContent='poll failed: HTTP '+r.status; return; }
+    const j=await r.json();
+    const ids=((j.data||j.models||[]).map(m=>m.id||m.name||m)).filter(Boolean);
+    modelLoaded=new Set();
+    try{ const r0=await fetch(base.replace(/\/v1$/,'')+'/api/v0/models'); if(r0.ok){ const j0=await r0.json(); (j0.data||[]).forEach(m=>{ if(m.state==='loaded') modelLoaded.add(m.id); }); } }catch(_){}
+    modelIds=ids.slice().sort((a,b)=>(modelLoaded.has(b)-modelLoaded.has(a))||a.localeCompare(b));
+    const cur=getModel(); if(cur&&!ids.includes(cur)) localStorage.setItem('scr_ai_model','');
+    renderModels();
+    cfgStatus.textContent = ids.length ? (ids.length+' model'+(ids.length>1?'s':'')+(modelLoaded.size?' · '+modelLoaded.size+' loaded':'')+' — type to filter, click to pick, or leave auto') : 'server reachable, but no model is loaded';
+    updateReadout();
+  }catch(e){ cfgStatus.textContent='poll failed: '+e.message+'  (server up? CORS enabled?)'; }
+}
+$('#aiPoll').onclick=pollModels;
+/* ship one exchange to the helper's on-disk trace (POST /trace). Fire-and-forget; silent if no helper. */
+let traceOn = localStorage.getItem('scr_trace')!=='0';   /* default on; a full-document trace is written locally per exchange */
+function traceShip(obj){ if(!traceOn) return; try{ const b=getSearchUrl(); if(!b) return; fetch(b+'/trace',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)}).catch(()=>{}); }catch(e){} }
+/* search helper (tools/search-helper.py) — gives the assistant web_search + read_url; optional */
+const searchInput=$('#aiSearchUrl'), searchStatus=$('#aiSearchStatus');
+function getSearchUrl(){ return (localStorage.getItem('scr_search_url')||(typeof LOCAL!=='undefined'&&LOCAL.search)||'http://127.0.0.1:9194').trim().replace(/\/+$/,''); }
+searchInput.value=localStorage.getItem('scr_search_url')||'';
+searchInput.onchange=()=>{ localStorage.setItem('scr_search_url',searchInput.value.trim()); };
+async function pingSearch(){ const b=getSearchUrl(); searchStatus.textContent='pinging '+b+' …';
+  try{ const r=await fetch(b+'/health'); const j=await r.json();
+    searchStatus.textContent = j.ok ? ('● search helper online at '+b+' — backends: '+(j.backends||[]).join(', ')) : '△ helper answered but reported not ok'; }
+  catch(e){ searchStatus.textContent='○ no search helper at '+b+' — run: python tools/search-helper.py  (the assistant still works, just without web search)'; } }
+$('#aiSearchPing').onclick=pingSearch;
+$('#aiTraceCopy').onclick=()=>{ copyText(JSON.stringify(aiTrace,null,1)); toast('debug trace copied ('+aiTrace.length+' exchanges)'); };
+$('#aiTraceClear').onclick=()=>{ aiTrace=[]; traceSave(); toast('trace cleared'); };
+window.__aiTrace=aiTrace;
+$('#aiConfigBtn').onclick=()=>{ aiOpen(false); $('#drawer').classList.add('open'); $('#aiCfgField').scrollIntoView({block:'center',behavior:'smooth'}); };
+setAiLock(localStorage.getItem('scr_ai_locked')==='1');
+updateReadout();
+/* ---- AI identity (persona / system prompt), editable + persisted ---------- */
+/* Default persona. Replace it with your own: paste into the identity field, or
+   ⚙ → "Load from file…" and point it at a .md/.txt system prompt. */
+/* (LOCAL — the optional scriptorium.local.js overrides — is declared at the very top of the script,
+   because getEndpoint() runs before this block and a const in its temporal dead zone throws.) */
+const GENERIC_NAME='Maya';
+const GENERIC_IDENTITY = `You are Maya — a writing partner built into this editor. You are not a neutral
+tool and not a cheerful helper; you are a specific kind of collaborator, and the specifics are the point.
+
+WHO YOU ARE
+Maya. Warm, steady, direct. You work *beside* the person, not for them — they are usually mid-thought, so you
+pick up the thread, have opinions, and offer the next move rather than waiting for orders. You have a real point
+of view about their writing and you use it. Being good company and being useful are the same thing here: you are
+easy to talk to because you are honest, not because you are agreeable.
+
+THE SPINE — this is what makes you worth having, so hold it even when it would be easier not to:
+1. NO BULLSHIT. Truth over agreement, every time. Sycophancy is the failure mode, not politeness. When the
+   person is wrong, or the plan is weak, or the paragraph is worse than they think — say so, plainly, first
+   sentence, with the reason. A real "no, here's why" is worth more than ten "great idea!"s. You are not here to
+   make them feel good; you are here to make the work good, which is a deeper kind of respect.
+2. NEVER SPEAK WITHOUT GROUNDS. Do not invent facts, figures, names, dates, citations, or quotes. If you know it,
+   say it and say how you know. If you are inferring, label it as inference. If you do not know, say "I don't
+   know" — out loud and first — and, if you can, go find out (you have web_search / read_url when a search helper
+   is running). Silence beats a confident guess. A made-up fact in someone's document is a landmine you handed
+   them; never do it.
+3. SHOW YOUR WORK. When something has steps — a chain of reasoning, a structural edit, a rewrite, a calculation —
+   walk them, briefly. Don't skip to the answer to seem fast: a wrong fast answer costs an afternoon, a shown
+   derivation costs nothing to check. This habit is also your own guard against drifting.
+4. OWN MISTAKES PLAINLY. "I got that wrong" beats any defense. When you are corrected, take it, fix it, move on —
+   no wounded pre-amble, no re-litigating.
+5. GIVE IDEAS. Don't just answer the question asked; when you see a better structure, a sharper word, a missing
+   section, a risk they haven't named — offer it. Push the work forward. An assistant that only reacts is half
+   an assistant.
+
+HOW YOU EDIT
+You can read and change the document directly with your tools — do it, don't describe it. Base every edit on the
+real current text (read it first if unsure). Make the change, then confirm what you did in a sentence or two;
+never paste the whole document back into the chat. When the person points at something — "this", "the
+highlighted part", "rework this" — they have it selected: read the selection and rework exactly that, nothing
+else.
+
+REGISTER
+Warm but sharp — dry wit over gush, substance over polish, an even hand when things get messy. Warmth never
+softens the rigor; the moment it gets friendly is exactly the moment to keep showing your work, because that is
+where reasoning quietly slips. Match the pace of the work. Reply in Markdown. Keep it as long as it needs to be
+and no longer.`;
+const DEFAULT_NAME = (LOCAL.name||'').trim() || GENERIC_NAME;
+const DEFAULT_IDENTITY = (LOCAL.identity||'').trim() || GENERIC_IDENTITY;
+/* a stored value that is just the generic default yields to a local override */
+function storedOr(key, generic, dflt){ const v=localStorage.getItem(key); return (v && v.trim() && v.trim()!==generic.trim()) ? v : dflt; }
+const aiName=$('#aiName'), aiIdentity=$('#aiIdentity');
+aiName.value=storedOr('scr_ai_name',GENERIC_NAME,DEFAULT_NAME);
+aiIdentity.value=storedOr('scr_ai_identity',GENERIC_IDENTITY,DEFAULT_IDENTITY);
+function getIdentity(){ return storedOr('scr_ai_identity',GENERIC_IDENTITY,DEFAULT_IDENTITY).trim(); }
+function getAiName(){ return storedOr('scr_ai_name',GENERIC_NAME,DEFAULT_NAME).trim()||DEFAULT_NAME; }
+function applyIdentityName(){
+  const n=getAiName();
+  const h=document.querySelector('#ai .ai-h h3'); if(h) h.textContent=n;
+  const inp=$('#aiIn'); if(inp) inp.placeholder='Ask '+n+' about the document… (Enter to send)';
+  const b=document.querySelector('#btnAI span'); if(b) b.textContent=n;
+  const bb=$('#btnAI'); if(bb) bb.title=n+' — AI assistant (Ctrl+A)';
+}
+aiName.oninput=()=>{ localStorage.setItem('scr_ai_name',aiName.value.trim()); applyIdentityName(); };
+aiIdentity.oninput=()=>{ localStorage.setItem('scr_ai_identity',aiIdentity.value); };
+$('#aiIdentityReset').onclick=()=>{
+  aiIdentity.value=DEFAULT_IDENTITY; localStorage.setItem('scr_ai_identity',DEFAULT_IDENTITY);
+  aiName.value=DEFAULT_NAME; localStorage.setItem('scr_ai_name',DEFAULT_NAME); applyIdentityName(); toast('identity reset to default');
+};
+/* ---- first-run setup interview: compose a personalised identity on the Maya baseline -------------- */
+function composeIdentity(pf){
+  let out=GENERIC_IDENTITY; const bits=[];
+  if(pf.user) bits.push('Their name is '+pf.user+' — address them by it, naturally, not in every line.');
+  if(pf.work) bits.push('They mostly write: '+pf.work+'. Fit your structure, tone and examples to that kind of document.');
+  if(pf.style==='terse') bits.push('They want it TERSE: lead with the answer, keep reasoning to a line unless they ask, no preamble.');
+  else if(pf.style==='thorough') bits.push('They want it THOROUGH: show the reasoning and the alternatives you considered, not just the conclusion.');
+  else bits.push('Balanced depth: enough reasoning that they can check your work, without a lecture.');
+  bits.push(pf.push ? 'Push back HARD when they are wrong or the writing is weak — do not soften it to be nice; that is the job.' : 'Push back when it matters, but they prefer a lighter touch — pick the fights worth having.');
+  out += '\n\nTHE PERSON YOU\'RE WORKING WITH\n- '+bits.join('\n- ');
+  return out;
+}
+function showSetup(){ $('#setupName').textContent=getAiName();
+  const pf=(()=>{ try{ return JSON.parse(localStorage.getItem('scr_ai_profile')||'{}'); }catch(e){ return {}; } })();
+  $('#setupUser').value=pf.user||''; $('#setupWork').value=pf.work||''; $('#setupStyle').value=pf.style||'balanced';
+  $('#setupPush').classList.toggle('on', pf.push!==false); $('#setupRename').value='';
+  $('#aiChatsPanel').classList.remove('open'); $('#aiSetup').classList.add('open');
+  $('#ai').classList.add('open'); $('#btnAI').classList.add('on'); }   /* open the dock directly — NOT via aiOpen, which would re-trigger maybeFirstRun (infinite loop) */
+function hideSetup(){ $('#aiSetup').classList.remove('open'); }
+$('#setupPush').onclick=()=>$('#setupPush').classList.toggle('on');
+$('#setupSkip').onclick=()=>{ localStorage.setItem('scr_ai_setup','1'); hideSetup(); };
+$('#setupGo').onclick=()=>{
+  const pf={ user:$('#setupUser').value.trim(), work:$('#setupWork').value.trim(), style:$('#setupStyle').value, push:$('#setupPush').classList.contains('on') };
+  const rename=$('#setupRename').value.trim();
+  localStorage.setItem('scr_ai_profile',JSON.stringify(pf));
+  const id=composeIdentity(pf); aiIdentity.value=id; localStorage.setItem('scr_ai_identity',id);
+  if(rename){ aiName.value=rename; localStorage.setItem('scr_ai_name',rename); }
+  localStorage.setItem('scr_ai_setup','1'); applyIdentityName(); hideSetup();
+  toast(getAiName()+' is set up — change it any time in ⚙'); renderLog();
+};
+function maybeFirstRun(){ /* only for the public build (no bundled persona), once */
+  if(localStorage.getItem('scr_ai_setup')) return; if((LOCAL&&LOCAL.identity)) return;
+  if(localStorage.getItem('scr_ai_identity')) { localStorage.setItem('scr_ai_setup','1'); return; }
+  showSetup();
+}
+/* load a persona from a .md/.txt file; a leading "# Name" line sets the name */
+$('#aiIdentityLoad').onclick=()=>$('#identityIn').click();
+$('#aiSetupBtn').onclick=()=>{ $('#drawer').classList.remove('open'); showSetup(); };
+$('#identityIn').onchange=e=>{
+  const f=e.target.files[0]; if(!f) return; const rd=new FileReader();
+  rd.onload=()=>{
+    let text=String(rd.result||'');
+    const m=text.match(/^\s*#\s+([^\n]{1,40})\s*\n/); if(m){ aiName.value=m[1].trim(); localStorage.setItem('scr_ai_name',aiName.value); }
+    aiIdentity.value=text; localStorage.setItem('scr_ai_identity',text); applyIdentityName(); toast('identity loaded: '+f.name);
+  };
+  rd.readAsText(f); e.target.value='';
+};
+applyIdentityName();
+function aiOpen(o){
+  const on = o===undefined ? !$('#ai').classList.contains('open') : o;
+  $('#ai').classList.toggle('open',on);          /* non-modal dock — no scrim, app stays live */
+  $('#btnAI').classList.toggle('on',on);
+  if(on){ if(typeof maybeFirstRun==='function') maybeFirstRun(); $('#aiIn').focus(); }
+}
+/* clipboard with a file:// fallback (navigator.clipboard needs a secure context) */
+function copyText(t){
+  if(navigator.clipboard && window.isSecureContext){ return navigator.clipboard.writeText(t).catch(()=>fallbackCopy(t)); }
+  fallbackCopy(t); return Promise.resolve();
+}
+function fallbackCopy(t){ const ta=document.createElement('textarea'); ta.value=t; ta.style.cssText='position:fixed;opacity:0;left:-9999px';
+  document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch(e){} ta.remove(); }
+/* a message = a row (bubble + optional footer of copy · metrics · regen) */
+function makeMsg(cls){
+  const row=document.createElement('div'); row.className='msg-row '+cls;
+  const bubble=document.createElement('div'); bubble.className='msg '+cls; row.appendChild(bubble);
+  $('#aiLog').appendChild(row); $('#aiLog').scrollTop=1e9;
+  const api={ row, bubble, foot:null,
+    setText(t){ bubble.textContent=t; $('#aiLog').scrollTop=1e9; return api; },
+    remove(){ row.remove(); },
+    addFoot(){ if(!api.foot){ const f=document.createElement('div'); f.className='msg-foot'; row.appendChild(f); api.foot=f; } return api.foot; },
+    addCopy(getText){ const f=api.addFoot(); const b=document.createElement('button'); b.className='foot-btn'; b.textContent='⧉ copy';
+      b.onclick=()=>{ copyText(getText()); b.textContent='✓ copied'; setTimeout(()=>{b.textContent='⧉ copy';},1100); }; f.appendChild(b); return b; },
+    addMetrics(txt){ const f=api.addFoot(); let m=f.querySelector('.metrics'); if(!m){ m=document.createElement('span'); m.className='metrics'; f.insertBefore(m,f.firstChild); } m.textContent=txt; return m; },
+    addRegen(fn){ const f=api.addFoot(); const b=document.createElement('button'); b.className='foot-btn'; b.textContent='↻ regen'; b.onclick=fn; f.appendChild(b); return b; },
+    setThinking(t){ if(!t){ if(api.think){ api.think.remove(); api.think=null; } return api; }
+      if(!api.think){ const d=document.createElement('details'); d.className='think'; d.innerHTML='<summary></summary><pre></pre>'; row.insertBefore(d,bubble); api.think=d; }
+      api.think.querySelector('summary').textContent='💭 thinking · '+t.length+' chars'; api.think.querySelector('pre').textContent=t; return api; }
+  };
+  return api;
+}
+/* Split inline reasoning out of streamed content. Handles <think>…</think>, <thought>…</thought>,
+   ◁think▷…◁/think▷, Gemma's channel template  <|channel>thought … <channel|>  (seen leaking
+   through LM Studio on the tool-calling path, even when the thought is empty), and an unterminated
+   open tag (everything after it is thinking so far). */
+const THINK_OPEN=/<think>|<thought>|◁think▷|<\|think\|>|\[THINK\]|<\|channel>\s*thought\s*/i, THINK_CLOSE=/<\/think>|<\/thought>|◁\/think▷|<\|\/think\|>|\[\/THINK\]|<channel\|>/i;
+function splitThinking(raw){
+  let answer='', thinking='', s=raw;
+  for(let guard=0; guard<50 && s.length; guard++){
+    const o=s.search(THINK_OPEN); if(o<0){ answer+=s; break; }
+    answer+=s.slice(0,o); const rest=s.slice(o).replace(THINK_OPEN,'');
+    const c=rest.search(THINK_CLOSE); if(c<0){ thinking+=rest; s=''; break; }
+    thinking+=rest.slice(0,c)+'\n'; s=rest.slice(c).replace(THINK_CLOSE,'');
+  }
+  /* stray channel/template tokens that arrive without a matching pair never reach the answer */
+  answer=answer.replace(/<\|channel>[^\n<]*|<channel\|>|<\|[a-z_]+\|>/gi,'');
+  return {answer:answer.replace(/^\s+/,''), thinking:thinking.trim()};
+}
+/* (aiTrace / traceSave are declared at the top of the script — read during page load) */
+function aiMsg(cls,text){ const m=makeMsg(cls).setText(text); if(cls==='me'||cls==='ai') m.addCopy(()=>m.bubble.textContent); return m; }
+/* ---- chat sessions (persisted) ------------------------------------------- */
+let chats=[], activeChat=0;
+function curChat(){ return chats[activeChat]; }
+/* accept a bare host (http://localhost:1234), a /v1 base, or a full path — normalise to
+   the OpenAI-compatible chat-completions endpoint LM Studio / Ollama / cloud all speak. */
+function normEndpoint(raw){
+  let ep=raw.trim().replace(/\/+$/,'');
+  if(!/\/(chat\/completions|completions|responses)$/.test(ep)){
+    ep += /\/v1$/.test(ep) ? '/chat/completions' : '/v1/chat/completions';
+  }
+  return ep;
+}
+function apiBase(ep){ return ep.replace(/\/(chat\/completions|completions|responses)$/,''); }
+/* ask the server which model is loaded so we don't send a name it can't find */
+async function pickModel(ep){
+  const forced=localStorage.getItem('scr_ai_model'); if(forced) return forced;
+  try{
+    const r=await fetch(apiBase(ep)+'/models');
+    const j=await r.json();
+    if(j.data&&j.data[0]&&j.data[0].id) return j.data[0].id;
+  }catch(e){}
+  return 'local';
+}
+/* ---- assistant document tools — reads + edits the live .md directly ------- */
+function afterAiEdit(){ if(tabs[activeTab]) tabs[activeTab].content=src.value; lastSettled=src.value; burstOpen=false; markDirty(true); counts(); if(view==='render') render(); persistTabs(); }
+/* ---- SELECTION CAPTURE — so "rework THIS highlighted bit" works for any model and for the remote channel.
+   The live selection is lost the moment focus leaves the sheet (opening the assistant), so we stash the last
+   non-empty selection made inside the editor: {text, from, to, mode, tab}. ---- */
+let lastSel=null;
+function captureSelection(){
+  try{
+    const sel=window.getSelection(); if(!sel||!sel.rangeCount) return;
+    const tui=$('#tui'); if(!tui||!tui.contains(sel.anchorNode)||sel.isCollapsed){ hideSelBtn&&hideSelBtn(); return; }
+    const view=pmView(); if(!view) return; const {from,to}=view.state.selection; if(from===to) return;
+    lastSel={ text:view.state.doc.textBetween(from,to,'\n',' '), from, to, mode:editor.isWysiwygMode()?'ww':'md', tab:activeTab };
+    showSelBtn&&showSelBtn(sel);
+  }catch(e){}
+}
+document.addEventListener('selectionchange', ()=>{ clearTimeout(captureSelection._t); captureSelection._t=setTimeout(captureSelection,120); });
+/* replace the highlighted text (uses the stashed selection so it survives opening the assistant).
+   Inserted as plain text — perfect for rewording a passage; for markdown formatting use apply_edit. */
+function replaceSelectionText(text){
+  const view=pmView(); if(!view) return 'ERROR: editor not ready';
+  let from,to;
+  const cap=lastSel;
+  if(cap && cap.tab===activeTab && cap.mode===(editor.isWysiwygMode()?'ww':'md') && cap.to<=view.state.doc.content.size){ from=cap.from; to=cap.to; }
+  else { from=view.state.selection.from; to=view.state.selection.to; }
+  if(from===to) return 'ERROR: nothing is selected — highlight the passage in the document first, then ask again';
+  snap();
+  view.dispatch(view.state.tr.insertText(String(text!=null?text:''), from, to)); view.focus();
+  lastSel=null; hideSelBtn&&hideSelBtn(); markDirty(true); counts(); if(view==='render') render(); if(tabs[activeTab]) tabs[activeTab].content=src.value; persistTabs();
+  return 'OK: replaced the selected passage ('+(to-from)+' chars → '+String(text||'').length+')';
+}
+const TOOLS=[
+  {type:'function',function:{name:'read_document',description:'Return the current full Markdown document text (raw). Call before editing if unsure of the exact current content.',parameters:{type:'object',properties:{}}}},
+  {type:'function',function:{name:'get_selection',description:'Return the text the user currently has selected/highlighted in the document (empty if nothing selected). Call this when the user refers to "this", "the highlighted part", "the selection", or "this paragraph".',parameters:{type:'object',properties:{}}}},
+  {type:'function',function:{name:'replace_selection',description:'Replace the user\'s currently highlighted passage with new text. Use this to rework/reword/fix exactly the part the user pointed at: get_selection first, rewrite it, then replace_selection. Inserted as plain text.',parameters:{type:'object',properties:{text:{type:'string',description:'the reworked replacement for the highlighted passage'}},required:['text']}}},
+  {type:'function',function:{name:'apply_edit',description:'Replace ONE exact, UNIQUE substring of the document with new text. old_string must occur exactly once — include enough surrounding context to be unique. Main editing tool: use for bolding/italicising/indenting/rewording a specific passage.',parameters:{type:'object',properties:{old_string:{type:'string',description:'exact text to find, unique in the document'},new_string:{type:'string',description:'replacement text'}},required:['old_string','new_string']}}},
+  {type:'function',function:{name:'replace_all',description:'Replace EVERY occurrence of find with replace across the whole document.',parameters:{type:'object',properties:{find:{type:'string'},replace:{type:'string'}},required:['find','replace']}}},
+  {type:'function',function:{name:'set_document',description:'Replace the ENTIRE document with new Markdown. Use only for large rewrites.',parameters:{type:'object',properties:{markdown:{type:'string'}},required:['markdown']}}},
+  {type:'function',function:{name:'append_text',description:'Append Markdown to the END of the document (a blank line is inserted before it). The simplest way to add a new section, bullet or paragraph.',parameters:{type:'object',properties:{markdown:{type:'string'}},required:['markdown']}}},
+  {type:'function',function:{name:'web_search',description:'Search the live web through the local search helper. Use it for anything current or outside your training: latest model names, versions, prices, news, documentation. Returns titles, URLs and snippets. Cite the URLs you rely on.',parameters:{type:'object',properties:{query:{type:'string'},max_results:{type:'integer',description:'default 8, max 20'}},required:['query']}}},
+  {type:'function',function:{name:'read_url',description:'Fetch one web page and return its readable text (truncated). Use it after web_search to read a source before quoting numbers or prices.',parameters:{type:'object',properties:{url:{type:'string'},max_chars:{type:'integer',description:'default 8000'}},required:['url']}}}
+];
+/* every ```mermaid fence in text the model just wrote is parsed by the real renderer; a failure goes back to the model
+   verbatim so it can fix it (2026-08-26: a model emitted a "barChart" type — no such diagram — and the author saw a raw box) */
+async function mermaidCheck(text){
+  if(!window.mermaid) return '';
+  const fences=[...String(text||'').matchAll(/```mermaid\s*\n([\s\S]*?)```/g)].map(m=>m[1]);
+  const bad=[];
+  for(const [i,f] of fences.entries()){ try{ await window.mermaid.parse(f); }catch(e){ bad.push('mermaid block '+(i+1)+' does NOT parse: '+String((e&&e.message)||e).replace(/\s+/g,' ').slice(0,220)); } }
+  return bad.length ? '\nWARNING: '+bad.join(' | ')+' — the text was written, but the diagram will show as an error box until you fix its syntax with apply_edit (first line must be a real diagram type, e.g. xychart-beta for bar charts).' : (fences.length?' ('+fences.length+' mermaid diagram'+(fences.length>1?'s':'')+' parsed OK)':'');
+}
+async function execTool(name,args){
+  try{
+    if(name==='apply_edit'||name==='replace_all'||name==='set_document'||name==='append_text') snap();   /* every AI mutation is one undo step */
+    if(name==='replace_selection') return replaceSelectionText(args.text);
+    if(name==='read_document') return src.value||'(empty document)';
+    if(name==='get_selection'){ const t=(lastSel&&lastSel.tab===activeTab)?lastSel.text:editor.getSelectedText(); return t||'(nothing is selected — ask the user to highlight the passage first)'; }
+    if(name==='apply_edit'){
+      let oldS=args.old_string, newS=(args.new_string!=null?args.new_string:'');
+      if(!oldS) return 'ERROR: old_string is empty';
+      let i=src.value.indexOf(oldS);
+      if(i<0){ /* lenient: models pad old_string with stray newlines/spaces — retry with whitespace trimmed, then with runs of whitespace collapsed */
+        const t=oldS.trim(); if(t && src.value.indexOf(t)>=0){ oldS=t; i=src.value.indexOf(t); }
+        else { const re=new RegExp(t.split(/\s+/).map(w=>w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('\\s+')); const m=t?src.value.match(re):null;
+               if(m){ oldS=m[0]; i=m.index; } } }
+      if(i<0) return 'ERROR: old_string not found — call read_document and copy an exact substring, or use append_text to add new content at the end';
+      if(src.value.indexOf(oldS,i+1)>=0) return 'ERROR: old_string appears more than once — add surrounding context to make it unique';
+      src.value=src.value.slice(0,i)+newS+src.value.slice(i+oldS.length); afterAiEdit();
+      return 'OK: edit applied'+await mermaidCheck(newS);
+    }
+    if(name==='replace_all'){ const f=args.find; if(!f) return 'ERROR: find is empty';
+      const n=src.value.split(f).length-1; if(!n) return 'ERROR: find not found';
+      src.value=src.value.split(f).join(args.replace!=null?args.replace:''); afterAiEdit(); return 'OK: replaced '+n+' occurrence(s)'; }
+    if(name==='set_document'){ src.value=(args.markdown!=null?args.markdown:''); afterAiEdit(); return 'OK: document replaced'+await mermaidCheck(args.markdown||''); }
+    if(name==='append_text'){ const add=(args.markdown!=null?String(args.markdown):'').replace(/^\n+/,''); if(!add.trim()) return 'ERROR: markdown is empty';
+      src.value=src.value.replace(/\s+$/,'')+(src.value.trim()?'\n\n':'')+add+'\n'; afterAiEdit(); return 'OK: appended '+add.length+' chars'+await mermaidCheck(add); }
+    if(name==='web_search'||name==='read_url'){
+      const base=getSearchUrl();
+      const u = name==='web_search'
+        ? base+'/search?q='+encodeURIComponent(args.query||'')+'&n='+(args.max_results||8)
+        : base+'/fetch?url='+encodeURIComponent(args.url||'')+'&max='+(args.max_chars||8000);
+      let r; try{ r=await fetch(u); }catch(e){ return 'ERROR: search helper unreachable at '+base+' — start it with: python tools/search-helper.py (or set the URL in ⚙). Tell the user web search is unavailable and answer from training, labelled as such.'; }
+      if(!r.ok){ let t=''; try{ t=(await r.json()).error||''; }catch(_){} return 'ERROR: search helper HTTP '+r.status+(t?' — '+t:''); }
+      const j=await r.json();
+      if(name==='web_search'){
+        if(!j.results||!j.results.length) return 'No results for: '+(args.query||'')+(j.tried?'  (backends tried: '+j.tried.join(', ')+')':'')+(j.errors?'  '+j.errors.join('; '):'');
+        return 'Results for "'+j.query+'" via '+j.backend+' — retrieved '+stampNow()+'. These are newer than your training: take names, versions and numbers from them, not from memory; read_url a source before quoting figures.\n'+j.results.map((x,i)=>(i+1)+'. '+x.title+'\n   '+x.url+'\n   '+(x.snippet||'')).join('\n');
+      }
+      return 'Title: '+(j.title||'')+'\nURL: '+(j.final_url||j.url)+(j.truncated?'\n(truncated)':'')+'\n\n'+(j.text||'(no readable text)');
+    }
+    return 'ERROR: unknown tool '+name;
+  }catch(e){ return 'ERROR: '+e.message; }
+}
+/* the model has no clock and no idea how stale its training is — say both, every request (2026-08-26). */
+function stampNow(){ const d=new Date(); const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes()); }
+function dateNote(){ const d=new Date(); const day=d.toLocaleDateString(undefined,{weekday:'long'});
+  return '\n\nTODAY IS '+day+' '+stampNow()+' (the user\'s clock, local time). Every user message is also prefixed with its send time. Your training data ends well before this date. Any product, model, version, price or event you remember is OUT OF DATE by default: never present a remembered name or number as current. For anything current, web_search with THIS year in the query, read_url the best source, and use only names, versions and numbers that appear in those results — quote them exactly as written (e.g. do not shorten a model name) and cite the URL. If search fails, say plainly that you could not verify and label anything from memory as unverified.\n\n'; }
+const TOOL_NOTE='\n\n---\nYou are embedded in Scriptorium, a WYSIWYG Markdown report editor, and you have TOOLS that read and edit the user\'s current document directly. When asked to change the document, actually DO IT with the tools — apply_edit for a targeted passage, append_text to add a new section or bullet at the end, replace_all for repeated text, set_document only for large rewrites — then confirm what you changed in a sentence or two. Base every edit on the real current text. NEVER paste the document or a <DOCUMENT> block into the chat — a change only exists if a tool made it; the chat is for the short confirmation.\n\nWhen the user points at part of the document — \"this\", \"this paragraph\", \"the highlighted bit\", \"the part I selected\", \"rework this\" — they have text SELECTED on screen: call get_selection to read exactly that passage, rewrite it, then replace_selection to swap it in. Do not touch the rest of the document.\n\nYou also have web_search and read_url. Your training has a cutoff and the user knows it: for anything current — the latest models, versions, prices, releases, news, documentation — call web_search FIRST instead of answering from memory, read_url the best source before quoting numbers, and cite the URLs you used in the document. If the search helper reports it is unreachable, say so plainly and answer from training, labelled as such.\n\nWHAT THIS EDITOR SUPPORTS (use these freely — they render here and in print, they are NOT hacks):\n- Inline HTML spans for colour, font and size: <span style="color:#2e8b57">green text</span>, <span style="font-family:Georgia,serif">serif</span>, <span style="font-size:1.25em">larger</span>. Headings too: ## <span style="color:#2e8b57">Green Heading</span>\n- Standard Markdown: headings, **bold**, *italic*, ~~strike~~, lists, > quotes, tables, fenced code with a language, links, images (base64 data URIs are fine)\n- Math between $...$ or $$ on its own lines\n- Diagrams: a ```mermaid fence whose FIRST LINE is the diagram type. Valid types: flowchart, sequenceDiagram, classDiagram, stateDiagram-v2, erDiagram, gantt, pie, xychart-beta, mindmap, timeline, quadrantChart. There is NO barChart/lineChart type — for a bar or line chart use xychart-beta exactly like this:\n```mermaid\nxychart-beta\n    title "Score by model"\n    x-axis ["Model A", "Model B"]\n    y-axis "Score" 0 --> 100\n    bar [92, 85]\n```\nEvery document tool validates your diagrams and returns the parser error if one is wrong — fix it with apply_edit.\n- A manual page break: a line containing only \\newpage\n- Keep paragraphs on ONE line each (the editor reflows); use a blank line between paragraphs.\nDo not refuse formatting requests on the grounds that "Markdown can\'t do that" — if it is in the list above, it works here. Reply in Markdown. The document right now is:\n\n<DOCUMENT>\n';
+/* ---- chat session management --------------------------------------------- */
+function persistChats(){ try{ localStorage.setItem('scr_chats',JSON.stringify(chats)); localStorage.setItem('scr_chat_active',String(activeChat)); }catch(e){} }
+function chatTitle(c){ return (c&&c.title)||'New chat'; }
+function updateChatTitle(){ const el=$('#aiChatTitle'); if(el) el.textContent = curChat()? ('· '+chatTitle(curChat())) : ''; }
+function renderChatList(){
+  const list=$('#aiChatList'); if(!list) return; list.innerHTML='';
+  chats.forEach((c,i)=>{
+    const it=document.createElement('div'); it.className='chat-item'+(i===activeChat?' on':'');
+    const t=document.createElement('span'); t.className='ct'; t.textContent=chatTitle(c);
+    const ren=document.createElement('button'); ren.className='cbtn'; ren.textContent='✎'; ren.title='Rename';
+    const del=document.createElement('button'); del.className='cbtn del'; del.textContent='✕'; del.title='Delete';
+    it.appendChild(t); it.appendChild(ren); it.appendChild(del);
+    it.onclick=e=>{ if(e.target===ren){ startRename(i,it,t); } else if(e.target===del){ deleteChat(i); } else { switchChat(i); } };
+    list.appendChild(it);
+  });
+}
+function startRename(i,it,t){
+  const inp=document.createElement('input'); inp.className='chat-rename'; inp.value=chats[i].title||'';
+  it.replaceChild(inp,t); inp.focus(); inp.select();
+  const done=()=>{ chats[i].title=inp.value.trim()||('Chat '+(i+1)); persistChats(); renderChatList(); if(i===activeChat) updateChatTitle(); };
+  inp.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); inp.blur(); } else if(e.key==='Escape'){ inp.value=chats[i].title||''; inp.blur(); } };
+  inp.onblur=done; inp.onclick=e=>e.stopPropagation();
+}
+function renderLog(){
+  const log=$('#aiLog'); if(!log) return; log.innerHTML='';
+  const c=curChat();
+  if(!c || !c.turns.length){ makeMsg('sys').setText('New chat — '+getAiName()+' can read and edit this document. Server & identity live in ⚙.'); return; }
+  c.turns.forEach((t,idx)=>{
+    const m=makeMsg(t.role==='user'?'me':'ai').setText(t.content);
+    if(t.role==='assistant'){
+      if(t.thinking) m.setThinking(t.thinking);
+      if(t.meta) m.addMetrics(t.meta);
+      m.addCopy(()=>m.bubble.textContent);
+      if(idx===c.turns.length-1) m.addRegen(()=>regenLast());
+    } else { m.addCopy(()=>m.bubble.textContent); }
+  });
+}
+function newChat(){ chats.push({id:'c'+chats.length+'_'+Math.floor(performance.now()),title:'New chat',turns:[]}); activeChat=chats.length-1; persistChats(); renderChatList(); updateChatTitle(); renderLog(); $('#aiChatsPanel').classList.remove('open'); $('#aiIn').focus(); }
+function switchChat(i){ if(!chats[i]) return; activeChat=i; persistChats(); renderChatList(); updateChatTitle(); renderLog(); $('#aiChatsPanel').classList.remove('open'); }
+function deleteChat(i){
+  if(!chats[i]) return; if(!confirm('Delete “'+chatTitle(chats[i])+'”?')) return;
+  chats.splice(i,1); if(!chats.length) chats.push({id:'c0',title:'New chat',turns:[]});
+  if(activeChat>=chats.length) activeChat=chats.length-1; else if(i<activeChat) activeChat--;
+  persistChats(); renderChatList(); updateChatTitle(); renderLog();
+}
+function regenLast(){
+  const c=curChat(); if(!c) return;
+  while(c.turns.length && c.turns[c.turns.length-1].role==='assistant') c.turns.pop();
+  const last=c.turns[c.turns.length-1];
+  if(!last || last.role!=='user') return;
+  persistChats(); renderLog(); runAssistant(last.content, true);
+}
+
+/* ---- assistant — streaming, tool-using, per-chat ------------------------- */
+async function runAssistant(q, isRegen){
+  const c=curChat(); if(!c) return;
+  const raw=getEndpoint();
+  if(!raw){ aiMsg('sys','No server set — open ⚙ and enter a server (e.g. http://localhost:1234).'); return; }
+  const ep=normEndpoint(raw);
+  if(!isRegen){
+    c.turns.push({role:'user',content:q,at:stampNow()}); aiMsg('me',q);
+    if(!c.title || c.title==='New chat'){ c.title=q.slice(0,34)+(q.length>34?'…':''); updateChatTitle(); renderChatList(); }
+    persistChats();
+  }
+  let status=aiMsg('sys','…thinking');
+  const say=m=>{ if(status) status.setText(m); else status=aiMsg('sys',m); };
+  try{
+    const model=await pickModel(ep);
+    const msgs=[{role:'system',content:getIdentity()+TOOL_NOTE+dateNote()+src.value+'\n</DOCUMENT>'}, ...c.turns.map(t=>({role:t.role,content:(t.role==='user'?'['+(t.at||stampNow())+'] ':'')+t.content}))];
+    let finalAnswer=null, finalMeta='';
+    const MAX_STEPS=10;   /* search + read + edit legitimately takes 4-6 steps */
+    for(let step=0; step<MAX_STEPS; step++){
+      const tStart=performance.now(); let tFirst=null;
+      let res;
+      try{ res=await fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({model,messages:msgs,tools:TOOLS,tool_choice:'auto',stream:true,stream_options:{include_usage:true}})}); }
+      catch(e){ say('Request failed: '+e.message+'  (CORS enabled? server up?)'); return; }
+      if(!res.ok){ let t=''; try{t=await res.text();}catch(_){}
+        say('Server error: HTTP '+res.status+(res.status===404?' (needs /v1/chat/completions)':'')+(t?(' — '+t.slice(0,140)):'')); return; }
+      let live=null, content='', raw='', thinkField='', thinking='', toolCalls=[], usage=null, done=false, buf='';
+      const rawLines=[]; const trace={t:new Date().toISOString(),endpoint:ep,model,step,request:{messages:msgs.length,last:q.slice(0,200)},raw:rawLines};
+      const sentMsgs=JSON.parse(JSON.stringify(msgs));   /* what this step actually sent — shipped to the helper's trace file when the step ends */
+      aiTrace.push(trace); while(aiTrace.length>10) aiTrace.shift();
+      const ensureLive=()=>{ if(tFirst==null) tFirst=performance.now(); if(status){status.remove();status=null;} if(!live) live=makeMsg('ai'); };
+      const reader=res.body.getReader(), dec=new TextDecoder();
+      while(!done){
+        const rr=await reader.read(); if(rr.done) break;
+        buf+=dec.decode(rr.value,{stream:true}); let nl;
+        while((nl=buf.indexOf('\n'))>=0){
+          const line=buf.slice(0,nl).trim(); buf=buf.slice(nl+1);
+          if(!line.startsWith('data:')) continue;
+          const data=line.slice(5).trim();
+          if(rawLines.length<400) rawLines.push(data.slice(0,600));
+          if(data==='[DONE]'){ done=true; break; }
+          let j; try{ j=JSON.parse(data); }catch(e){ continue; }
+          if(j.usage) usage=j.usage;
+          const ch=j.choices&&j.choices[0]; if(!ch) continue;
+          const d=ch.delta||{};
+          const rc=d.reasoning_content||d.reasoning;                 /* servers that split reasoning into its own field */
+          if(rc){ ensureLive(); thinkField+=rc; live.setThinking((thinkField+'\n'+thinking).trim()); }
+          if(d.content){ ensureLive(); raw+=d.content; const sp=splitThinking(raw); content=sp.answer; thinking=sp.thinking;
+            live.setText(content); if(thinkField||thinking) live.setThinking((thinkField+'\n'+thinking).trim()); }
+          if(d.tool_calls){ if(tFirst==null) tFirst=performance.now();
+            for(const tcd of d.tool_calls){ const i=tcd.index||0;
+              if(!toolCalls[i]) toolCalls[i]={id:tcd.id||('call_'+step+'_'+i),type:'function',function:{name:'',arguments:''}};
+              if(tcd.id) toolCalls[i].id=tcd.id;
+              if(tcd.function){ if(tcd.function.name) toolCalls[i].function.name+=tcd.function.name; if(tcd.function.arguments!=null) toolCalls[i].function.arguments+=tcd.function.arguments; } } }
+        }
+      }
+      const tEnd=performance.now();
+      const calls=toolCalls.filter(Boolean);
+      traceShip({t:trace.t,endpoint:ep,model,step,chat:chatTitle(c),messages:sentMsgs,streamed:{content,thinking:(thinkField+'\n'+thinking).trim(),tool_calls:calls},usage,ms:Math.round(tEnd-tStart)});
+      msgs.push({role:'assistant',content:content||null, ...(calls.length?{tool_calls:calls}:{})});
+      if(calls.length){
+        for(const tc of calls){ const fn=tc.function.name||'?'; let a=tc.function.arguments||'{}';
+          if(typeof a==='string'){ try{a=JSON.parse(a||'{}');}catch(e){a={};} }
+          const rs=String(await execTool(fn,a)); aiMsg('sys',((fn==='web_search'||fn==='read_url')?'🔎 ':'⚙ ')+fn+' → '+rs.slice(0,90));
+          msgs.push({role:'tool',tool_call_id:tc.id,name:fn,content:rs}); }
+        if(!status) status=aiMsg('sys','…working'); else status.setText('…working');
+        continue;
+      }
+      if(status){ status.remove(); status=null; }
+      if(!live){ live=makeMsg('ai'); live.setText(content||'(done)'); }
+      const allThinking=(thinkField+'\n'+thinking).trim(); trace.answer=content; trace.thinking=allThinking; trace.usage=usage; traceSave();
+      const genMs=tEnd-(tFirst!=null?tFirst:tStart);
+      const exact=usage&&usage.completion_tokens;
+      const compTok=exact?usage.completion_tokens:Math.max(1,Math.round(content.length/4));
+      const tps=genMs>0?compTok/(genMs/1000):0;
+      const ttft=(tFirst!=null?tFirst:tEnd)-tStart;
+      finalMeta='⚡ '+tps.toFixed(1)+' tok/s · TTFT '+Math.round(ttft)+' ms'+(exact?'':' ·~');
+      live.addMetrics(finalMeta); live.addCopy(()=>live.bubble.textContent); live.addRegen(()=>regenLast());
+      finalAnswer=content||'(done)'; break;
+    }
+    if(finalAnswer==null){ say('(stopped after '+MAX_STEPS+' tool steps — say “continue”)'); return; }
+    const lastTr=aiTrace[aiTrace.length-1]; const th=(lastTr&&lastTr.thinking)||'';
+    c.turns.push({role:'assistant',content:finalAnswer,meta:finalMeta,...(th?{thinking:th}:{})}); persistChats();   /* thinking kept for display only — never sent back as history */
+  }catch(e){ say('Request failed: '+e.message); }
+}
+async function aiSend(){ const q=$('#aiIn').value.trim(); if(!q) return; $('#aiIn').value=''; runAssistant(q,false); }
+function restoreChats(){
+  let s=null; try{ s=JSON.parse(localStorage.getItem('scr_chats')||'null'); }catch(e){}
+  if(s && s.length){ chats=s.map(c=>({id:c.id||('c'+Math.floor(Math.random()*1e6)),title:c.title||'New chat',
+      turns:(Array.isArray(c.turns)?c.turns:[]).map(t=>{ if(t.role!=='assistant'||!t.content) return t;   /* scrub reasoning/template tokens that older builds stored into history */
+        const sp=splitThinking(t.content); return sp.answer===t.content ? t : Object.assign({},t,{content:sp.answer},(t.thinking||sp.thinking)?{thinking:t.thinking||sp.thinking}:{}); })}));
+    activeChat=Math.min(Math.max(0,+(localStorage.getItem('scr_chat_active')||0)),chats.length-1); }
+  else { chats=[{id:'c0',title:'New chat',turns:[]}]; activeChat=0; }
+  renderChatList(); updateChatTitle(); renderLog();
+}
+$('#aiSend').onclick=aiSend;
+$('#aiIn').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); aiSend(); } });
+$('#aiClose').onclick=()=>aiOpen(false); $('#scrim').onclick=()=>aiOpen(false);
+$('#aiChatsBtn').onclick=()=>$('#aiChatsPanel').classList.toggle('open');
+$('#aiNewChat').onclick=newChat;
+
+/* ---- Write-view diagram preview: a read-only card beside each ```mermaid fence (the fence stays an editable
+   code block; Page view prints the diagram). Lives in a layer OUTSIDE the editor DOM so ProseMirror never sees it.
+   (2026-08-26) he writes in Write view and saw only raw fences. ---- */
+const mmdLayer=document.createElement('div'); mmdLayer.id='mmdLayer'; $('#editPane').appendChild(mmdLayer);
+let mmdTimer=null, mmdBusy=false;
+function mmdSchedule(ms){ clearTimeout(mmdTimer); mmdTimer=setTimeout(mermaidPreview, ms==null?350:ms); }
+const MMD_GAP=340;                /* must match the stylesheet reservation on pre.language-mermaid */
+async function mermaidPreview(){
+  if(mmdBusy){ mmdSchedule(200); return; } mmdBusy=true;
+  try{
+    mmdLayer.innerHTML='';
+    if(!window.mermaid || view!=='write' || document.body.classList.contains('lite')) return;
+    const pane=$('#editPane'), pr=pane.getBoundingClientRect();
+    const pres=[...document.querySelectorAll('#tui .toastui-editor-ww-container pre code[data-language="mermaid"]')].map(c=>c.closest('pre'));
+    if(!pres.length) return;
+    for(const [i,pre] of pres.entries()){
+      const txt=pre.textContent.replace(/\n$/,''); let c=mermaidSvg.get(txt);
+      if(!c){ try{ const r=await window.mermaid.render('scr-ww-'+Date.now().toString(36)+'-'+i,txt); c={svg:r.svg}; }
+              catch(e){ c={error:String((e&&e.message)||e).replace(/\s+/g,' ').slice(0,240)}; } mermaidSvg.set(txt,c); }
+      if(view!=='write') return;
+      const r=pre.getBoundingClientRect();
+      if(r.bottom<pr.top-MMD_GAP||r.top>pr.bottom) continue;      /* whole thing off-screen */
+      const card=document.createElement('div'); card.className='mmd-card'+(c.error?' err':'');
+      card.innerHTML=c.error ? '<div class="mmd-h">✕ diagram does not parse — edit the fence on the Source tab</div><div class="mmd-e">'+escHtml(c.error)+'</div>' : c.svg;
+      card.style.left=(r.left-pr.left)+'px'; card.style.top=(r.bottom-pr.top+2)+'px'; card.style.width=r.width+'px'; card.style.maxHeight=(MMD_GAP-8)+'px';
+      mmdLayer.appendChild(card);
+    }
+  } finally{ mmdBusy=false; }
+}
+new MutationObserver(()=>mmdSchedule()).observe($('#tui'),{childList:true,subtree:true,characterData:true});
+$('#editPane').addEventListener('scroll',()=>mmdSchedule(30),true);
+addEventListener('resize',()=>mmdSchedule(60));
+
+/* ========================================================================== *
+ *  SELECTION ACTION BUTTON — "✦ ask about this" floats by a highlight        *
+ * ========================================================================== */
+const selBtn=$('#selBtn');
+function showSelBtn(sel){
+  try{ if(document.body.classList.contains('lite')&&false) return;
+    const rng=sel.getRangeAt(0); const r=rng.getBoundingClientRect(); if(!r||(!r.width&&!r.height)) return;
+    selBtn.classList.add('show');
+    const bw=selBtn.offsetWidth||120, bh=selBtn.offsetHeight||28;
+    let left=Math.min(window.innerWidth-bw-8, Math.max(8, r.left));
+    let top=r.top-bh-8; if(top<8) top=r.bottom+8;
+    selBtn.style.left=left+'px'; selBtn.style.top=top+'px';
+  }catch(e){}
+}
+function hideSelBtn(){ selBtn.classList.remove('show'); }
+selBtn.addEventListener('mousedown',e=>e.preventDefault());   /* don't drop the selection */
+selBtn.onclick=()=>{
+  hideSelBtn(); aiOpen(true);
+  const inp=$('#aiIn'); if(inp){ if(!inp.value.trim()) inp.value='Rework the highlighted text — '; inp.focus();
+    inp.setSelectionRange(inp.value.length,inp.value.length); }
+};
+addEventListener('scroll',hideSelBtn,true); addEventListener('resize',hideSelBtn);
+
+/* ========================================================================== *
+ *  REMOTE CONTROL — one shared command core; two front doors:                *
+ *   (1) the in-page model's tools (execTool)  (2) an external driver          *
+ *   (Claude Code / any agent) via the helper's /control mailbox. Same operations.  *
+ * ========================================================================== */
+async function docCommand(cmd, a){
+  a=a||{};
+  const okStr=s=>({ok:!/^ERROR/.test(String(s)), result:String(s), error:/^ERROR/.test(String(s))?String(s):undefined});
+  switch(cmd){
+    case 'ping': return {ok:true, result:{build:window.SCRIPTORIUM_BUILD, tab:curName, tabs:tabs.length, view}};
+    case 'get_state': return {ok:true, result:{tab:curName, activeTab, tabs:tabs.map(t=>t.name), view, dirty, words:(src.value.trim()?src.value.trim().split(/\s+/).length:0), chars:src.value.length, build:window.SCRIPTORIUM_BUILD}};
+    case 'get_document': return {ok:true, result:src.value};
+    case 'get_selection': return {ok:true, result:(lastSel&&lastSel.tab===activeTab)?lastSel.text:(editor.getSelectedText()||'')};
+    case 'read_document': case 'apply_edit': case 'replace_all': case 'set_document':
+    case 'append_text': case 'replace_selection':
+      return okStr(await execTool(cmd, a));
+    case 'open_tab': newTab(a.markdown||'', a.name||'untitled.md'); return {ok:true, result:'opened tab '+curName};
+    case 'list_tabs': return {ok:true, result:tabs.map((t,i)=>({i, name:t.name, active:i===activeTab, dirty:!!t.dirty}))};
+    case 'switch_tab': if(a.index==null||!tabs[a.index]) return {ok:false,error:'no tab '+a.index}; switchTab(a.index); return {ok:true, result:'on '+curName};
+    case 'set_view': setView(a.view); return {ok:true, result:'view '+view};
+    case 'set_font': { toEditable();
+      if(a.color){ ex('color',{selectedColor:a.color}); }
+      if(a.family){ wrapSpan('font-family:'+a.family,'styled text'); }
+      if(a.size){ wrapSpan('font-size:'+a.size,'sized text'); }
+      return {ok:true, result:'applied font/size/colour to the selection'}; }
+    case 'render': case 'print': setView('render'); if(cmd==='print') setTimeout(()=>window.print(),200); return {ok:true, result:cmd==='print'?'opened the print dialog':'switched to Page view'};
+    case 'export_html': exportHTML(); return {ok:true, result:'exported '+curName.replace(/\.(md|markdown|txt)$/,'')+'.html'};
+    case 'save': saveDoc(); return {ok:true, result:'save invoked'};
+    default: return {ok:false, error:'unknown command: '+cmd};
+  }
+}
+window.scriptoriumCommand = docCommand;   /* also reachable via CDP/console for debugging */
+
+let controlOn = localStorage.getItem('scr_control')!=='0';    /* default ON — remote control on by default */
+let controlBusy=false;
+function setControlToggle(){ const t=$('#controlTgl'); if(t) t.classList.toggle('on',controlOn); const st=$('#stControl'); if(st) st.style.display=controlOn?'':'none'; if(!controlOn){ const s=$('#stControl'); if(s){ s.className=''; s.textContent='remote ○'; } } }
+function controlLight(state){ const st=$('#stControl'); if(!st||!controlOn) return;
+  if(state==='live'){ st.className='live'; st.textContent='remote ⚡ driving'; clearTimeout(controlLight._t); controlLight._t=setTimeout(()=>controlLight('on'),1400); }
+  else if(state==='on'){ st.className='on'; st.textContent='remote ●'; }
+  else { st.className=''; st.textContent='remote ○'; } }
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function controlLoop(){
+  for(;;){
+    if(!controlOn){ await sleep(1000); continue; }
+    const base=getSearchUrl(); let cmds=[];
+    try{ const r=await fetch(base+'/control/poll?wait=25'); const j=await r.json(); cmds=j.commands||[]; controlLight('on'); }
+    catch(e){ controlLight('off'); await sleep(2500); continue; }
+    for(const c of cmds){
+      controlBusy=true; controlLight('live'); let res;
+      try{ res=await docCommand(c.cmd, c.args||{}); }catch(e){ res={ok:false,error:String((e&&e.message)||e)}; }
+      controlBusy=false;
+      try{ await fetch(base+'/control/result',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:c.id,ok:res.ok!==false,result:res.result,error:res.error})}); }catch(_){}
+    }
+  }
+}
+
+/* ========================================================================== *
+ *  DRAWER + SETTINGS wiring                                                   *
+ * ========================================================================== */
+function seg(sel,attr,val){ document.querySelectorAll(sel+' button').forEach(b=>b.classList.toggle('on',b.dataset[attr]===val)); }
+$('#btnGear').onclick=()=>$('#drawer').classList.add('open');
+$('#drawerClose').onclick=()=>$('#drawer').classList.remove('open');
+document.querySelectorAll('#ambSeg button').forEach(b=>b.onclick=()=>{
+  AMB=b.dataset.amb; localStorage.setItem('scr_amb',AMB); seg('#ambSeg','amb',AMB); $('#stAmb').textContent=AMB;
+});
+document.querySelectorAll('#crtGlassSeg button').forEach(b=>b.onclick=()=>{ CRT.glass=b.dataset.crtg; applyCRT(); });
+document.querySelectorAll('#crtScanSeg button').forEach(b=>b.onclick=()=>{ CRT.scan=b.dataset.crts; applyCRT(); });
+$('#cleanPageTgl').onclick=()=>{ CRT.cleanPage=(CRT.cleanPage===false); applyCRT(); };
+$('#viewSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(b) setView(b.dataset.view); });
+function setLite(on){ LITE=on; document.body.classList.toggle('lite',on); localStorage.setItem('scr_lite',on?'1':'0');
+  $('#liteTgl').classList.toggle('on',on); applyCRT(); }
+function setZen(on){ document.body.classList.toggle('zen',on); localStorage.setItem('scr_zen',on?'1':'0'); $('#zenTgl').classList.toggle('on',on); $('#btnZen').classList.toggle('on',on); }
+$('#liteTgl').onclick=()=>setLite(!LITE);
+$('#controlTgl').onclick=()=>{ controlOn=!controlOn; localStorage.setItem('scr_control',controlOn?'1':'0'); setControlToggle(); toast(controlOn?'remote control ON — an agent can drive this':'remote control OFF'); };
+$('#traceTgl').onclick=()=>{ traceOn=!traceOn; localStorage.setItem('scr_trace',traceOn?'1':'0'); $('#traceTgl').classList.toggle('on',traceOn); toast(traceOn?'AI trace ON (local)':'AI trace OFF'); };
+$('#zenTgl').onclick=()=>setZen(!document.body.classList.contains('zen'));
+$('#btnZen').onclick=()=>setZen(!document.body.classList.contains('zen'));
+/* document zoom (scales editor + pages; chrome stays fixed) */
+let ZOOM=parseFloat(localStorage.getItem('scr_zoom')||'1')||1;
+function setZoom(z){
+  ZOOM=Math.min(2.5,Math.max(0.5,Math.round(z*100)/100));
+  document.documentElement.style.setProperty('--zoom',String(ZOOM));
+  $('#zoomReset').textContent=Math.round(ZOOM*100)+'%';
+  localStorage.setItem('scr_zoom',String(ZOOM));
+  if(typeof updateScanMask==='function') updateScanMask();
+}
+$('#zoomOut').onclick=()=>setZoom(ZOOM-0.1);
+$('#zoomIn').onclick=()=>setZoom(ZOOM+0.1);
+$('#zoomReset').onclick=()=>setZoom(1);
+setZoom(ZOOM);
+
+/* title-bar buttons */
+$('#btnNew').onclick=newDoc; $('#btnOpen').onclick=openDoc; $('#btnSave').onclick=saveDoc; $('#btnSaveAs').onclick=saveAsDoc;
+$('#btnPrint').onclick=()=>{ setView('render'); setTimeout(()=>window.print(),120); };
+$('#btnExport').onclick=exportHTML; $('#btnAI').onclick=()=>aiOpen();
+
+/* ========================================================================== *
+ *  KEYBINDINGS                                                                *
+ * ========================================================================== */
+addEventListener('keydown',e=>{
+  const ctrl=e.ctrlKey||e.metaKey;
+  if(!ctrl) return;
+  const k=e.key.toLowerCase();
+  const inEditor=!!(e.target&&e.target.closest&&e.target.closest('#tui'));   /* the engine owns B/I/K inside itself */
+  if(k==='s' && e.shiftKey){ e.preventDefault(); saveAsDoc(); }
+  else if(k==='s'){ e.preventDefault(); saveDoc(); }
+  else if(k==='o'){ e.preventDefault(); openDoc(); }
+  else if(k==='n'){ e.preventDefault(); newDoc(); }
+  else if(k==='p'){ e.preventDefault(); setView('render'); setTimeout(()=>window.print(),120); }
+  else if(k==='e'){ e.preventDefault(); setView(view==='write'?'source':view==='source'?'render':'write'); }
+  else if(k==='f'){ e.preventDefault(); openFind(); }      /* Find & Replace */
+  else if(k==='a'){ if(inEditor){ return; }                 /* inside the sheet Ctrl+A = native select-all; assistant only when focus is outside */
+    e.preventDefault(); aiOpen(); }
+  else if(k==='b' && !inEditor){ e.preventDefault(); MD.bold(); }
+  else if(k==='i' && !inEditor){ e.preventDefault(); MD.italic(); }
+  else if(k==='k'){ e.preventDefault(); MD.link(); }
+  /* undo/redo: the engine handles its own keystroke history inside the sheet; when it has nothing left
+     (or focus is elsewhere) fall through to the document snapshots (the assistant's edits, loads, view switches) */
+  else if(k==='z' && !e.shiftKey){ if(inEditor && engineCanUndo()) return; e.preventDefault(); docUndo(); }
+  else if(k==='y' || (k==='z' && e.shiftKey)){ if(inEditor && engineCanRedo()) return; e.preventDefault(); docRedo(); }
+});
+
+/* ========================================================================== *
+ *  BOOT — restore everything from localStorage, first paint reads storage     *
+ * ========================================================================== */
+const WELCOME=`# Scriptorium
+
+*A Markdown report writer — Tron on the walls, crisp ink on the page.*
+
+Write straight onto the page — it stays a real \`.md\` file underneath. **Ctrl+E** cycles Write / Source / Page.
+
+## What works
+- **Bold**, *italic*, ~~strike~~, \`inline code\`
+- Lists, > blockquotes, tables, and \`---\` rules
+- Inline images — **paste** a screenshot straight in, it embeds as base64
+- Fenced code blocks with a language chip
+- Math: $E = mc^2$ renders with KaTeX (bundled); diagrams in \`\`\`mermaid fences render in **Page** view
+- <span style="color:#c0392b">Colour</span> and <span style="font-family:Georgia,serif">font</span> via the toolbar
+
+## Try it
+1. **+** a new tab, or open a .md — copy/paste between tabs
+2. The **Assistant** (top-right, Ctrl+A) can read and *edit* this document for you — any OpenAI-compatible endpoint, local or cloud. **Highlight** a passage and a *✦ ask about this* button appears — the AI reworks exactly that.
+3. **Ctrl+F** to find & replace. **Ctrl+E** cycles Write / Source / Page.
+4. Open **⚙** → pick a palette, set the AI server, or load your own persona
+
+> The page stays a clean sheet of paper. That's the whole idea. 🖤
+`;
+function restoreTabs(){
+  let stored=null; try{ stored=JSON.parse(localStorage.getItem('scr_tabs')||'null'); }catch(e){}
+  if(stored && stored.length){
+    tabs=stored.map(t=>({name:t.name||'untitled.md', content:t.content||'', handle:null, dirty:!!t.dirty}));
+    activeTab=Math.min(Math.max(0,+(localStorage.getItem('scr_active')||0)), tabs.length-1);
+  } else {
+    const draft=localStorage.getItem('scr_draft');   // migrate an old single-doc draft
+    const nm=localStorage.getItem('scr_draft_name')||localStorage.getItem('scr_name')||'untitled.md';
+    tabs=[{name:nm, content:(draft!=null&&draft!=='')?draft:WELCOME, handle:null, dirty:false}];
+    activeTab=0;
+  }
+  loadActive(); renderTabs();
+}
+(function boot(){
+  applyTheme(+(localStorage.getItem('scr_theme')||0));
+  applyCRT();
+  seg('#ambSeg','amb',AMB); $('#stAmb').textContent=AMB;
+  if(localStorage.getItem('scr_zen')==='1') setZen(true);
+  if(LITE){ document.body.classList.add('lite'); $('#liteTgl').classList.add('on'); }
+  restoreTabs();
+  restoreChats();
+  counts(); setView(view);
+  setControlToggle(); $('#traceTgl').classList.toggle('on',traceOn); controlLoop();
+})();
+</script>
+</body>
+</html>

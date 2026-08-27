@@ -1,0 +1,20 @@
+# personal persona / server config — keep yours local (the .example IS committed)
+scriptorium.local.js
+personas/
+
+# OS / editor noise
+Thumbs.db
+.DS_Store
+*.swp
+
+# vendored engine build dir
+.build/
+node_modules/
+
+# internal / household docs — not for the public repo (kept locally)
+RESTART.md
+WHAT-THIS-IS.md
+HANDOFF-START-HERE.txt
+test/identifiers.local.json
+__pycache__/
+*.pyc
