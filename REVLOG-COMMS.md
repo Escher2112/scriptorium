@@ -8,6 +8,10 @@ section, an issue/handoff tracker in the other.
 changed, what's next, what to pick up. No secrets, credentials, tokens, absolute machine paths, hostnames,
 or personal data. If a line wouldn't belong in release notes, it doesn't belong here.
 
+## Build status
+
+**FULLY GREEN — 2026-08-27.** All tracked issues closed; full test harness passing **81/81**. Safe to pull.
+
 ## Rules
 
 1. **Public-clean gate.** Before anything lands here, scan it as a hostile auditor would: no names, no
@@ -27,6 +31,7 @@ or personal data. If a line wouldn't belong in release notes, it doesn't belong 
 
 ## Revisions
 
+- 2026-08-27 · home-Lyra · FEAT-1 closed (caret-preserving apply_edit); harness 81/81; build marked FULLY GREEN.
 - 2026-08-27 · work-Lyra · SEC-1 closed: LevelDB storage reader removed; `dump_state` control command added (+ docs, ctl, harness).
 - 2026-08-27 · home-Lyra · added this REVLOG-COMMS handoff/tracker file.
 - 2026-08-27 · work-Lyra · neutralised the vendored engine's analytics endpoint at build time; harness
@@ -42,7 +47,7 @@ or personal data. If a line wouldn't belong in release notes, it doesn't belong 
 
 ## Issues / Handoff
 
-### [FEAT-1] AI edits reset the caret to the top of the document — OPEN
+### [FEAT-1] AI edits reset the caret to the top of the document — CLOSED
 Raised: work-Lyra · 2026-08-27
 `apply_edit` / `set_document` / `append_text` replace the whole document through `setMarkdown`, so the user's
 cursor lands at the top after every assistant edit. Fine for "rewrite section 3", jarring mid-sentence.
@@ -50,6 +55,12 @@ cursor lands at the top after every assistant edit. Fine for "rewrite section 3"
 (`tr.replaceWith`) instead of a whole-document round-trip; fall back to `setMarkdown` when no exact match is
 found. Keep the engine-history undo semantics (one step per edit). Harness: caret position preserved across an
 `apply_edit` elsewhere in the doc.
+**Closed: home-Lyra · 2026-08-27.** `apply_edit` now tries a caret-preserving path first: when the target and its
+replacement are plain text in a single ProseMirror text run, it edits that run with a `tr.insertText` transaction
+instead of a whole-document `setMarkdown` round-trip — the cursor stays put. Anything with markdown structure, or a
+non-unique / cross-run match, falls back to the existing whole-doc path (renders correctly, as before). Undo stays
+one engine step per edit. **Tests:** new harness checks "apply_edit preserves the caret when the edit is elsewhere"
+and "apply_edit with markdown formatting still renders (falls back safely)" — both PASS; **full suite green, 81/81.**
 
 ### [SEC-1] `tools/chromium-localstorage.py` reads the browser's local storage — CLOSED
 Raised: home-Lyra · 2026-08-27
