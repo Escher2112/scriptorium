@@ -410,7 +410,7 @@ body.lite #titlebar,body.lite #toolbar,body.lite #status{background:var(--bg2)!i
 
 /* ---- PRINT / PDF (§12): only the page, black ink on white ---------------- */
 @media print{
-  @page{margin:18mm}
+  @page{size:letter;margin:0}   /* the printed page IS the screen page: same box, same type */
   body{background:#fff!important;overflow:visible;display:block;height:auto;margin:0}
   body::after,#amb,#crt,#titlebar,#toolbar,#tabbar,#status,#drawer,#scrim,#ai,#toast,#editPane{display:none!important}
   #app,#work,#renderPane{display:block!important;height:auto!important;overflow:visible!important}
