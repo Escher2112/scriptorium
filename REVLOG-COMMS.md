@@ -31,6 +31,7 @@ or personal data. If a line wouldn't belong in release notes, it doesn't belong 
 
 ## Revisions
 
+- 2026-08-27 · work-Lyra · reviewed FEAT-1 on a second machine (81/81); added an empty-target short-circuit to `applyEditInPlace` (was a harmless full scan before falling back).
 - 2026-08-27 · home-Lyra · FEAT-1 closed (caret-preserving apply_edit); harness 81/81; build marked FULLY GREEN.
 - 2026-08-27 · work-Lyra · SEC-1 closed: LevelDB storage reader removed; `dump_state` control command added (+ docs, ctl, harness).
 - 2026-08-27 · home-Lyra · added this REVLOG-COMMS handoff/tracker file.

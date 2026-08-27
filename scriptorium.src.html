@@ -1778,7 +1778,7 @@ async function mermaidCheck(text){
 function isPlainRun(str){ return str==='' ? true : !/[*_`~|\[\]<>#\n]/.test(str); }
 function applyEditInPlace(oldS,newS){
   try{
-    if(!isPlainRun(oldS)||!isPlainRun(newS)) return false;
+    if(!oldS||!isPlainRun(oldS)||!isPlainRun(newS)) return false;   /* empty target: nothing to locate — let the safe path answer */
     const v=pmView(); if(!v) return false;
     const doc=v.state.doc; let hit=null, count=0;
     doc.descendants((node,pos)=>{ if(node.isText&&node.text){ let idx=node.text.indexOf(oldS);

@@ -3273,7 +3273,7 @@ pre[class*="language-"] {
       <span id="stCounts">0 words · 0 chars</span>
       <span id="stView">split</span>
       <span id="stControl" title="Remote control — lets Claude Code (or any agent) drive this editor through the local helper. Lights up when connected; flashes when a command runs." style="display:none">remote ○</span>
-      <span id="stBuild" title="Build timestamp — if this is not tonight, you are on a cached copy: close the window (Super+W) and reopen it">build 2026-08-27 10:30</span>
+      <span id="stBuild" title="Build timestamp — if this is not tonight, you are on a cached copy: close the window (Super+W) and reopen it">build 2026-08-27 10:41</span>
     </div>
   </div>
 </div>
@@ -7788,7 +7788,7 @@ globalThis["mermaid"] = globalThis.__esbuild_esm_mermaid_nm["mermaid"].default;
 /* Optional local overrides from scriptorium.local.js (gitignored): {name, identity, endpoint}.
    Declared FIRST: several functions below read it during page load. */
 const LOCAL = (typeof window.SCRIPTORIUM_LOCAL==='object' && window.SCRIPTORIUM_LOCAL) || {};
-window.SCRIPTORIUM_BUILD='2026-08-27 10:30'; try{ console.log('Scriptorium build 2026-08-27 10:30'); }catch(e){}
+window.SCRIPTORIUM_BUILD='2026-08-27 10:41'; try{ console.log('Scriptorium build 2026-08-27 10:41'); }catch(e){}
 /* KaTeX + Mermaid are bundled (2026-08-26) — the renderer below used to advertise them and ship neither. */
 try{ if(window.mermaid) window.mermaid.initialize({startOnLoad:false,theme:'neutral'}); }catch(e){}
 /* raw AI exchange trace — the last few requests/responses, for debugging what a model really sent.
@@ -8800,7 +8800,7 @@ async function mermaidCheck(text){
 function isPlainRun(str){ return str==='' ? true : !/[*_`~|\[\]<>#\n]/.test(str); }
 function applyEditInPlace(oldS,newS){
   try{
-    if(!isPlainRun(oldS)||!isPlainRun(newS)) return false;
+    if(!oldS||!isPlainRun(oldS)||!isPlainRun(newS)) return false;   /* empty target: nothing to locate — let the safe path answer */
     const v=pmView(); if(!v) return false;
     const doc=v.state.doc; let hit=null, count=0;
     doc.descendants((node,pos)=>{ if(node.isText&&node.text){ let idx=node.text.indexOf(oldS);
