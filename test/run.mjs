@@ -49,6 +49,7 @@ await check('no personal/company identifiers in the public build', () => {
   return { ok: bad.length === 0, info: words.length ? words.length + ' checked' : 'no denylist set', detail: bad.length ? 'found: ' + bad.join(', ') : '' };
 });
 await check('KaTeX + Mermaid inlined (fonts as data URIs, no fonts/ URLs left)', () => ({ ok: /katex\.min\.css/.test(html) && /mermaid\.min\.js/.test(html) && /data:font\/woff2;base64,/.test(html) && !/url\(fonts\//.test(html) }));
+await check('no analytics/telemetry endpoint in the built file', () => ({ ok: !/google-analytics\.com|googletagmanager|segment\.io|sentry\.io|mixpanel/i.test(html) }));
 await check('lite edition present', () => existsSync(LITE));
 await check('Chrome found for browser layers', () => ({ ok: !!CHROME, info: CHROME || 'set SCRIPTORIUM_CHROME' }));
 if (!CHROME || !existsSync(BUILT)) { summary(); }

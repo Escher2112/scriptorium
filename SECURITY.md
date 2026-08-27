@@ -8,7 +8,9 @@ phones home.
 ## The app: `scriptorium.html` / `scriptorium-lite.html`
 
 - Runs entirely in your browser from a local file. **No account, no analytics, no telemetry.** The bundled editor
-  engine's usage-statistics option is turned off.
+  engine (Toast UI Editor) ships a usage-statistics beacon; it is disabled by option **and** its endpoint is
+  neutralised at build time, so the built file contains no analytics URL at all — the test harness asserts this.
+  Other URL strings inside the bundle are library documentation/licence links in error messages, not requests.
 - **Network:** the app makes no network requests on its own. The only outbound calls are the ones you configure:
   - the AI endpoint you enter in ⚙ (LM Studio, Ollama, or a cloud URL) — your documents are sent there only when
     you talk to the assistant, and only to that URL;
