@@ -21,9 +21,10 @@ set -euo pipefail
 H="${SCRIPTORIUM_HELPER:-http://127.0.0.1:9194}"
 TO="${SCRIPTORIUM_CTL_TIMEOUT:-30}"
 cmd="${1:-status}"; shift || true
-jstr(){ python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$1"; }
+PY="${SCRIPTORIUM_PYTHON:-python3}"   # set SCRIPTORIUM_PYTHON=/path/to/python where "python3" is a Store alias (Windows)
+jstr(){ "$PY" -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$1"; }
 post(){ curl -s -X POST "$H/control/push" -H 'Content-Type: application/json' -d "$1" \
-        | python3 -c 'import json,sys;r=json.load(sys.stdin);print(r.get("result") if r.get("ok") else "ERROR: "+str(r.get("error")), file=(sys.stderr if not r.get("ok") else sys.stdout));sys.exit(0 if r.get("ok") else 1)'; }
+        | "$PY" -c 'import json,sys;r=json.load(sys.stdin);print(r.get("result") if r.get("ok") else "ERROR: "+str(r.get("error")), file=(sys.stderr if not r.get("ok") else sys.stdout));sys.exit(0 if r.get("ok") else 1)'; }
 case "$cmd" in
   status)   curl -s "$H/control/status" ; echo ;;
   ping|get_document|get_selection|get_state|list_tabs|render|print|export_html|save)
@@ -34,6 +35,6 @@ case "$cmd" in
   set_document|append_text) md=$(cat); post "{\"cmd\":\"$cmd\",\"args\":{\"markdown\":$(jstr "$md")},\"timeout\":$TO}" ;;
   apply_edit) post "{\"cmd\":\"apply_edit\",\"args\":{\"old_string\":$(jstr "${1:?old}"),\"new_string\":$(jstr "${2:?new}")},\"timeout\":$TO}" ;;
   replace_selection) post "{\"cmd\":\"replace_selection\",\"args\":{\"text\":$(jstr "${1:?text}")},\"timeout\":$TO}" ;;
-  raw)      body=$(python3 -c 'import json,sys;o=json.loads(sys.argv[1]);o.setdefault("timeout",'"$TO"');print(json.dumps(o))' "${1:?json}"); post "$body" ;;
+  raw)      body=$("$PY" -c 'import json,sys;o=json.loads(sys.argv[1]);o.setdefault("timeout",'"$TO"');print(json.dumps(o))' "${1:?json}"); post "$body" ;;
   *) echo "unknown command: $cmd (see the header of $0)"; exit 2 ;;
 esac
