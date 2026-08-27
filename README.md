@@ -71,8 +71,12 @@ Drafts, tabs, chats, theme and AI settings persist in the browser's local storag
 
 **Launchers** (optional): `tools/scriptorium-open.sh` (Linux/macOS) and `tools/scriptorium-open.cmd` (Windows)
 start the search/control helper if it isn't running and open Scriptorium as its own app window with a
-cache-busting URL. On Windows, point a desktop shortcut at the `.cmd` (icon: `tools/scriptorium.ico`); set
-`SCRIPTORIUM_PYTHON=<path to python.exe>` in the shortcut if plain `python` is the Store alias.
+cache-busting URL. **One-time install of a desktop/app-menu shortcut:** Linux/macOS `tools/install-shortcut.sh`
+(app-menu entry + Desktop icon on Linux; `~/Applications/Scriptorium.app` on macOS; `-p /path/to/python3` to pin the
+helper's interpreter). On Windows, `powershell -File tools\install-shortcut.ps1` puts a **Scriptorium** shortcut on
+your Desktop pointing at the `.cmd` (icon: `tools/scriptorium.ico`); add `-Python "C:\path	o\python.exe"` if plain
+`python` on that box is the Store alias (it writes a one-line, git-ignored `tools/scriptorium-open.local.cmd`).
+If Windows refuses to run local scripts, the standard one-time fix is `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
 > Chrome caches `file://` pages aggressively. The status bar shows the **build time** (bottom-right); if it isn't the version you just built, you're seeing a cached copy — hard-refresh (`Ctrl+Shift+R`), or for an installed web-app window, close it and reopen.
 
@@ -146,6 +150,12 @@ node test/run.mjs --build  # rebuild first
 ```
 
 See `test/README.md`. Run it before every release; it is the memory of everything that ever broke.
+
+## Transparency
+
+`SECURITY.md` states in plain language what the app, the helper, the launchers and the installers touch on
+your machine, what they store, and what leaves it (nothing, unless you configure an AI endpoint). No account, no
+telemetry, no admin rights, no system-setting changes.
 
 ## Design credits
 

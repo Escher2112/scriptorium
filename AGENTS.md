@@ -49,10 +49,11 @@ engine.entry.js        what esbuild bundles (Toast UI Editor + ProseMirror + col
 scriptorium.html       BUILT single file (~5 MB). Generated — never hand-edit.
 scriptorium-lite.html  v1 edition, zero-dependency, ~95 KB, hand-maintained (frozen)
 tools/                 search-helper.py (search + control mailbox), scriptorium-ctl.sh (CLI driver),
-                       scriptorium-open.sh (cache-busting launcher)
+                       scriptorium-open.sh/.cmd (launchers), install-shortcut.sh/.ps1 (desktop shortcut on any OS),
+                       print-pdf.mjs (headless md -> PDF), scriptorium.ico/.png (app icon)
 test/                  run.mjs (harness), cdp.mjs (Node CDP client)
 docs/CONTROL-API.md    the control channel + tool API, fully documented
-README.md · LICENSE (MIT)
+README.md · SECURITY.md (what every part touches on a machine) · LICENSE (MIT)
 ```
 
 ## How to extend

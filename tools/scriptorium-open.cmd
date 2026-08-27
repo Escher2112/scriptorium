@@ -8,6 +8,8 @@
 ::               SCRIPTORIUM_HTML=<path to scriptorium.html> (default: the one next to this script's parent)
 setlocal EnableDelayedExpansion
 set "ROOT=%~dp0.."
+:: per-machine settings (git-ignored), e.g.  set "SCRIPTORIUM_PYTHON=C:\path\to\python.exe"
+if exist "%~dp0scriptorium-open.local.cmd" call "%~dp0scriptorium-open.local.cmd"
 if "%SCRIPTORIUM_HTML%"=="" (set "HTML=%ROOT%\scriptorium.html") else (set "HTML=%SCRIPTORIUM_HTML%")
 if not exist "%HTML%" (echo not found: %HTML% & pause & exit /b 1)
 

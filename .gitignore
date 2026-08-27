@@ -18,3 +18,5 @@ HANDOFF-START-HERE.txt
 test/identifiers.local.json
 __pycache__/
 *.pyc
+tools/scriptorium-open.local.cmd
+tools/scriptorium-open.local.sh
