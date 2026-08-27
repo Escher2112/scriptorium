@@ -3273,7 +3273,7 @@ pre[class*="language-"] {
       <span id="stCounts">0 words · 0 chars</span>
       <span id="stView">split</span>
       <span id="stControl" title="Remote control — lets Claude Code (or any agent) drive this editor through the local helper. Lights up when connected; flashes when a command runs." style="display:none">remote ○</span>
-      <span id="stBuild" title="Build timestamp — if this is not tonight, you are on a cached copy: close the window (Super+W) and reopen it">build 2026-08-27 08:10</span>
+      <span id="stBuild" title="Build timestamp — if this is not tonight, you are on a cached copy: close the window (Super+W) and reopen it">build 2026-08-27 08:40</span>
     </div>
   </div>
 </div>
@@ -7788,7 +7788,7 @@ globalThis["mermaid"] = globalThis.__esbuild_esm_mermaid_nm["mermaid"].default;
 /* Optional local overrides from scriptorium.local.js (gitignored): {name, identity, endpoint}.
    Declared FIRST: several functions below read it during page load. */
 const LOCAL = (typeof window.SCRIPTORIUM_LOCAL==='object' && window.SCRIPTORIUM_LOCAL) || {};
-window.SCRIPTORIUM_BUILD='2026-08-27 08:10'; try{ console.log('Scriptorium build 2026-08-27 08:10'); }catch(e){}
+window.SCRIPTORIUM_BUILD='2026-08-27 08:40'; try{ console.log('Scriptorium build 2026-08-27 08:40'); }catch(e){}
 /* KaTeX + Mermaid are bundled (2026-08-26) — the renderer below used to advertise them and ship neither. */
 try{ if(window.mermaid) window.mermaid.initialize({startOnLoad:false,theme:'neutral'}); }catch(e){}
 /* raw AI exchange trace — the last few requests/responses, for debugging what a model really sent.
@@ -8111,21 +8111,25 @@ function md2html(src){
   return out.join('\n');
 }
 function parseList(lines,start){
-  // returns rendered list html + index after the list. Handles one/two indent levels.
+  // renders a (nested) list; an item's text absorbs indented or lazy continuation lines (CommonMark 5.2/5.3),
+  // so a wrapped bullet never breaks out of its list as a stray paragraph
+  const ITEM=/^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+  const blockStart=l=>/^\s*$/.test(l)||/^\s*(#{1,6}\s|>|\||`{3,}|~{3,}|([-*_])(\s*\1){2,}\s*$|\x5c{1,2}(newpage|pagebreak)\s*$|\$\$\s*$)/.test(l)||/^\s*<\/?(div|p|table|pre|ul|ol|blockquote|h[1-6]|hr|img|section|figure)\b/i.test(l);
   function build(idx,indent){
     const ordered=/^\s*\d+[.)]\s+/.test(lines[idx]);
-    let html = ordered?'<ol>':'<ul>'; let i=idx;
+    let html=ordered?'<ol>':'<ul>'; let i=idx, open=false;
     while(i<lines.length){
-      const m=lines[i].match(/^(\s*)([-*+]|\d+[.)])\s+(.*)$/);
-      if(!m) break;
-      const ind=m[1].length;
-      if(ind<indent) break;
-      if(ind>indent){ // nested — attach to previous li
-        const sub=build(i,ind); html=html.replace(/<\/li>\s*$/,'')+sub.html+'</li>'; i=sub.next; continue;
+      const m=lines[i].match(ITEM);
+      if(m){
+        const ind=m[1].length;
+        if(ind<indent) break;
+        if(ind>indent){ const sub=build(i,ind); html=html.replace(/<\/li>\s*$/,'')+sub.html+'</li>'; i=sub.next; continue; }
+        html+=`<li>${inline(m[3])}</li>`; open=true; i++; continue;
       }
-      html+=`<li>${inline(m[3])}</li>`; i++;
+      if(open && !blockStart(lines[i])){ html=html.replace(/<\/li>\s*$/,' '+inline(lines[i].trim())+'</li>'); i++; continue; }   /* continuation line */
+      break;
     }
-    html += ordered?'</ol>':'</ul>';
+    html+=ordered?'</ol>':'</ul>';
     return {html,next:i};
   }
   const firstIndent=(lines[start].match(/^(\s*)/)[1]||'').length;
@@ -8201,7 +8205,10 @@ function render(){
     if(b.classList && b.classList.contains('pagebreak')){ if(page.childElementCount>0) page=mk(); continue; }
     page.appendChild(b);
     if(page.scrollHeight>targetH && page.childElementCount>1){   /* block overflowed → push to next page */
-      page.removeChild(b); page=mk(); page.appendChild(b);
+      page.removeChild(b); const prev=page; page=mk();
+      const tail=prev.lastElementChild;   /* never strand a heading at the bottom of a page: it moves with its body */
+      if(tail && /^H[1-4]$/.test(tail.tagName) && prev.childElementCount>1){ prev.removeChild(tail); page.appendChild(tail); }
+      page.appendChild(b);
     }
   }
   if(page.childElementCount===0 && paper.childElementCount>1) paper.removeChild(page);
