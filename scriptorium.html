@@ -162,13 +162,14 @@ input[type=color]{width:30px;height:28px;padding:2px;border:1px solid var(--line
 }
 .page{
   width:100%;max-width:816px;aspect-ratio:8.5/11;         /* US Letter proportions */
-  padding:60px 68px;box-sizing:border-box;
+  padding:var(--pg-pt,67px) var(--pg-px,68px) var(--pg-pb,77px);box-sizing:border-box;
   background:var(--paper);color:var(--paper-ink);
   border:1px solid var(--paper-line);border-radius:4px;
   box-shadow:0 20px 50px rgba(0,0,0,.45);
 }
 .page>:first-child{margin-top:0}
 .pagebreak{height:0;margin:0;padding:0;border:0}
+.page.measuring{aspect-ratio:auto;height:auto;min-height:0}   /* measure true content height, not the letter-aspect box */
 /* document zoom — scales editor text + pages, chrome stays fixed */
 #editPane,#paper{zoom:var(--zoom,1)}
 /* rendered markdown typography — the clean sheet */
@@ -415,7 +416,7 @@ body.lite #titlebar,body.lite #toolbar,body.lite #status{background:var(--bg2)!i
   body::after,#amb,#crt,#titlebar,#toolbar,#tabbar,#status,#drawer,#scrim,#ai,#toast,#editPane{display:none!important}
   #app,#work,#renderPane{display:block!important;height:auto!important;overflow:visible!important}
   #paper{display:block!important;max-width:none;width:auto;gap:0;margin:0;padding:0;border:0;box-shadow:none;background:#fff;color:#000;font-size:16px;zoom:1!important}
-  .page{width:8.5in;height:11in;max-width:none;aspect-ratio:auto;margin:0;padding:60px 68px;border:0;border-radius:0;box-shadow:none;background:#fff;overflow:hidden;break-after:page;page-break-after:always}
+  .page{width:8.5in;height:11in;max-width:none;aspect-ratio:auto;margin:0;padding:var(--pg-pt,67px) var(--pg-px,68px) var(--pg-pb,77px);border:0;border-radius:0;box-shadow:none;background:#fff;overflow:hidden;break-after:page;page-break-after:always}
   .page:last-child{break-after:auto;page-break-after:auto}
   .pagebreak{break-after:page}
   #paper pre{background:#f4f4f4;color:#000;border:1px solid #ccc}
@@ -3273,7 +3274,7 @@ pre[class*="language-"] {
       <span id="stCounts">0 words · 0 chars</span>
       <span id="stView">split</span>
       <span id="stControl" title="Remote control — lets Claude Code (or any agent) drive this editor through the local helper. Lights up when connected; flashes when a command runs." style="display:none">remote ○</span>
-      <span id="stBuild" title="Build timestamp — if this is not tonight, you are on a cached copy: close the window (Super+W) and reopen it">build 2026-08-27 10:41</span>
+      <span id="stBuild" title="Build timestamp — if this is not tonight, you are on a cached copy: close the window (Super+W) and reopen it">build 2026-08-31 12:48</span>
     </div>
   </div>
 </div>
@@ -3322,6 +3323,19 @@ pre[class*="language-"] {
       <div class="toggle">
         <span>Focus / zen<small>dims chrome while writing (§12)</small></span>
         <div class="sw-toggle" id="zenTgl"></div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Page margins · inches</label>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <label style="flex:1;display:flex;flex-direction:column;gap:3px;font:10px var(--mono);color:var(--dim)"><small>header</small><input type="number" id="pgPadTop" min="0" max="2" step="0.05" style="width:100%"></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:3px;font:10px var(--mono);color:var(--dim)"><small>footer</small><input type="number" id="pgPadBottom" min="0" max="2" step="0.05" style="width:100%"></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:3px;font:10px var(--mono);color:var(--dim)"><small>sides</small><input type="number" id="pgPadSide" min="0" max="2" step="0.05" style="width:100%"></label>
+      </div>
+      <div style="font:10px var(--mono);color:var(--dim);margin-top:6px">applies to Page view · print · PDF</div>
+      <div class="toggle" style="margin-top:11px">
+        <span>Chapter per page<small>start each top-level (#) heading on a new page</small></span>
+        <div class="sw-toggle" id="pgBreakH1Tgl"></div>
       </div>
     </div>
     <div class="field" id="aiCfgField">
@@ -7788,7 +7802,7 @@ globalThis["mermaid"] = globalThis.__esbuild_esm_mermaid_nm["mermaid"].default;
 /* Optional local overrides from scriptorium.local.js (gitignored): {name, identity, endpoint}.
    Declared FIRST: several functions below read it during page load. */
 const LOCAL = (typeof window.SCRIPTORIUM_LOCAL==='object' && window.SCRIPTORIUM_LOCAL) || {};
-window.SCRIPTORIUM_BUILD='2026-08-27 10:41'; try{ console.log('Scriptorium build 2026-08-27 10:41'); }catch(e){}
+window.SCRIPTORIUM_BUILD='2026-08-31 12:48'; try{ console.log('Scriptorium build 2026-08-31 12:48'); }catch(e){}
 /* KaTeX + Mermaid are bundled (2026-08-26) — the renderer below used to advertise them and ship neither. */
 try{ if(window.mermaid) window.mermaid.initialize({startOnLoad:false,theme:'neutral'}); }catch(e){}
 /* raw AI exchange trace — the last few requests/responses, for debugging what a model really sent.
@@ -8197,12 +8211,14 @@ function render(){
      scrollHeight (unscaled), which would scatter blocks onto one-per-page at any zoom≠1.
      Measure with zoom normalized, then restore the display zoom. */
   const prevZoom=paper.style.zoom; paper.style.zoom='1';
-  const mk=()=>{ const p=document.createElement('div'); p.className='page'; paper.appendChild(p); return p; };
+  const mk=()=>{ const p=document.createElement('div'); p.className='page measuring'; paper.appendChild(p); return p; };
   let page=mk();
   const pageW=page.getBoundingClientRect().width || 816;
-  const targetH=pageW*11/8.5;                        /* Letter aspect → page content height */
+  const targetH=pageW*11/8.5;
+    const pgBreakH1=localStorage.getItem('scr_pgbreak_h1')==='1';   /* chapter-per-page */                        /* Letter aspect → page content height */
   for(const b of blocks){
     if(b.classList && b.classList.contains('pagebreak')){ if(page.childElementCount>0) page=mk(); continue; }
+    if(pgBreakH1 && b.tagName==='H1' && page.childElementCount>0) page=mk();
     page.appendChild(b);
     if(page.scrollHeight>targetH && page.childElementCount>1){   /* block overflowed → push to next page */
       page.removeChild(b); const prev=page; page=mk();
@@ -8212,6 +8228,7 @@ function render(){
     }
   }
   if(page.childElementCount===0 && paper.childElementCount>1) paper.removeChild(page);
+  paper.querySelectorAll('.page.measuring').forEach(function(pp){pp.classList.remove('measuring');});
   paper.style.zoom=prevZoom;                          /* restore CSS-var zoom */
   postRender();
 }
@@ -9165,6 +9182,28 @@ $('#zoomOut').onclick=()=>setZoom(ZOOM-0.1);
 $('#zoomIn').onclick=()=>setZoom(ZOOM+0.1);
 $('#zoomReset').onclick=()=>setZoom(1);
 setZoom(ZOOM);
+/* ---- page margins (header/footer/side, inches) -> CSS vars on the page sheets; Page view + print + PDF ---- */
+const PGPAD_DEF={top:0.70,bottom:0.80,side:0.72};
+let PGPAD=Object.assign({},PGPAD_DEF,(function(){try{return JSON.parse(localStorage.getItem('scr_pgpad')||'{}')}catch(e){return{}}})());
+function applyPgPad(){
+  const cl=v=>Math.min(2,Math.max(0,Number(v)||0));
+  PGPAD.top=cl(PGPAD.top); PGPAD.bottom=cl(PGPAD.bottom); PGPAD.side=cl(PGPAD.side);
+  const r=document.documentElement.style;
+  r.setProperty('--pg-pt',(PGPAD.top*96)+'px');
+  r.setProperty('--pg-pb',(PGPAD.bottom*96)+'px');
+  r.setProperty('--pg-px',(PGPAD.side*96)+'px');
+  try{localStorage.setItem('scr_pgpad',JSON.stringify(PGPAD));}catch(e){}
+  const t=$('#pgPadTop'),b=$('#pgPadBottom'),s=$('#pgPadSide');
+  if(t&&document.activeElement!==t)t.value=PGPAD.top;
+  if(b&&document.activeElement!==b)b.value=PGPAD.bottom;
+  if(s&&document.activeElement!==s)s.value=PGPAD.side;
+  if(typeof view!=='undefined'&&view==='render'&&typeof render==='function') render();
+}
+(function(){ const bind=(id,key)=>{ const el=$('#'+id); if(el) el.oninput=()=>{ PGPAD[key]=el.value; applyPgPad(); }; };
+  bind('pgPadTop','top'); bind('pgPadBottom','bottom'); bind('pgPadSide','side');
+  var _pbt=$('#pgBreakH1Tgl'); if(_pbt){ _pbt.classList.toggle('on', localStorage.getItem('scr_pgbreak_h1')==='1');
+    _pbt.onclick=function(){ var on=localStorage.getItem('scr_pgbreak_h1')!=='1'; localStorage.setItem('scr_pgbreak_h1',on?'1':'0'); _pbt.classList.toggle('on',on); if(typeof view!=='undefined'&&view==='render'&&typeof render==='function') render(); }; }
+  applyPgPad(); })();
 
 /* title-bar buttons */
 $('#btnNew').onclick=newDoc; $('#btnOpen').onclick=openDoc; $('#btnSave').onclick=saveDoc; $('#btnSaveAs').onclick=saveAsDoc;

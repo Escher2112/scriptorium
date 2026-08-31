@@ -20,3 +20,9 @@ __pycache__/
 *.pyc
 tools/scriptorium-open.local.cmd
 tools/scriptorium-open.local.sh
+
+# page-snap output (QA screenshots)
+.snapshots/
+
+# local backups
+*.bak-*
