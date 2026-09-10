@@ -31,6 +31,7 @@ or personal data. If a line wouldn't belong in release notes, it doesn't belong 
 
 ## Revisions
 
+- 2026-09-10 · work-Lyra · raised BUG-1: content silently dropped when printing a document whose blocks alternate heading/image/caption/quote. Page view paginates correctly; the print path merges sheets and clips. Repro fixture added at `test/fixtures/bug1-image-blocks.md`.
 - 2026-08-27 · work-Lyra · reviewed FEAT-1 on a second machine (81/81); added an empty-target short-circuit to `applyEditInPlace` (was a harmless full scan before falling back).
 - 2026-08-27 · home-Lyra · FEAT-1 closed (caret-preserving apply_edit); harness 81/81; build marked FULLY GREEN.
 - 2026-08-27 · work-Lyra · SEC-1 closed: LevelDB storage reader removed; `dump_state` control command added (+ docs, ctl, harness).
@@ -47,6 +48,50 @@ or personal data. If a line wouldn't belong in release notes, it doesn't belong 
 ---
 
 ## Issues / Handoff
+
+### [BUG-1] Printing silently drops content — Page view and print disagree on pagination — OPEN
+Raised: work-Lyra · 2026-09-10
+
+**Symptom.** A document whose body is a repeating `### heading / image / *caption* / > quote / paragraph`
+sequence loses images when printed. No error, no gap, no marker — the image is simply absent from the PDF.
+Only discoverable by counting images in the output, which nobody does.
+
+**Measured on the repro fixture** (`test/fixtures/bug1-image-blocks.md` — 6 identical blocks, 6 images,
+no manual page breaks):
+
+| path | result |
+|---|---|
+| Page view (`tools/page-snap.mjs`) | **6 sheets, one image each — correct** |
+| Print (`tools/print-pdf.mjs`) | **3 sheets, two images each — 2 of 6 images lost** |
+
+A real document showed the same split at larger scale: 27 pages in Page view, 20 sheets printed, 9 of 14
+images surviving.
+
+**So pagination is not the bug.** `render()` lays the blocks out correctly, one image per sheet. The print
+path then re-flows those already-paginated `.page` divs, fits roughly two per physical sheet, and the print
+rule `.page{height:11in;overflow:hidden}` clips whatever no longer fits. On screen `.page` has no
+`overflow:hidden`, so the same overpacking is merely visible rather than destructive — which is why this
+never shows up until someone prints.
+
+**Ruled out while narrowing it:**
+- Not image load timing. A control fixture of plain text + a tall image flows correctly to the next sheet.
+- Not missing intrinsic dimensions. Repeating the repro with explicit `width`/`height` on each `<img>`
+  changes nothing, and the sanitizer preserves those attributes.
+- Not horizontal overflow. Printed image boxes measure ~508 pt inside a 612 pt sheet, comfortably within
+  the margins.
+
+**Proposed fix, in priority order:**
+1. **Make the loss visible first.** Whatever the layout outcome, content must never disappear in silence.
+   A clipped `.page` should be detectable — a console warning, a status-bar note, or a visible marker in
+   the output. A five-second catch beats a silent corruption.
+2. **Make the print path honour the computed pagination** rather than re-flowing it: one `.page` div per
+   physical sheet, so what Page view showed is what prints. Page view is documented as "this is what
+   prints", and today it is not.
+3. Add a harness check that prints a fixture and asserts the printed image count equals the source image
+   count — the class of regression that is invisible to every existing test.
+
+**Workaround until fixed:** a manual `\newpage` before each image block. One image per sheet cannot
+overflow. Confirmed effective — a 14-image document went from 9/14 to 14/14 printed.
 
 ### [FEAT-1] AI edits reset the caret to the top of the document — CLOSED
 Raised: work-Lyra · 2026-08-27
