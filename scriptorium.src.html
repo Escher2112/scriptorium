@@ -404,7 +404,7 @@ body.zen #toolbar:hover{opacity:1}
 
 /* ---- LITE MODE (§11) — one switch, solid colour, strip every overlay ----- */
 body.lite{background:var(--bg)!important}
-body.lite #amb,body.lite #crt{display:none!important}
+body.lite #amb,body.lite #rain,body.lite #crt{display:none!important}
 body.lite .glass,body.lite #titlebar,body.lite #toolbar,body.lite #status,
 body.lite #drawer,body.lite #ai,body.lite #scrim,body.lite #toast,body.lite *{
   -webkit-backdrop-filter:none!important;backdrop-filter:none!important}
@@ -420,7 +420,7 @@ body.lite #titlebar,body.lite #toolbar,body.lite #status{background:var(--bg2)!i
 @media print{
   @page{size:letter;margin:0}   /* the printed page IS the screen page: same box, same type */
   body{background:#fff!important;overflow:visible;display:block;height:auto;margin:0}
-  body::after,#amb,#crt,#titlebar,#toolbar,#tabbar,#status,#drawer,#scrim,#ai,#toast,#editPane{display:none!important}
+  body::after,#amb,#rain,#crt,#titlebar,#toolbar,#tabbar,#status,#drawer,#scrim,#ai,#toast,#editPane{display:none!important}
   #app,#work,#renderPane{display:block!important;height:auto!important;overflow:visible!important}
   #paper{display:block!important;max-width:none;width:auto;gap:0;margin:0;padding:0;border:0;box-shadow:none;background:#fff;color:#000;font-size:16px;zoom:1!important}
   .page{width:8.5in;height:11in;max-width:none;aspect-ratio:auto;margin:0;padding:var(--pg-pt,67px) var(--pg-px,68px) var(--pg-pb,77px);border:0;border-radius:0;box-shadow:none;background:#fff;overflow:hidden;break-after:page;page-break-after:always}
@@ -610,7 +610,7 @@ body.lite #titlebar,body.lite #toolbar,body.lite #status{background:var(--bg2)!i
   <div id="status">
     <span><span class="dot" id="saveDot"></span> <span id="saveState">saved</span></span>
     <span>theme <b id="stTheme">Hearth Goth</b></span>
-    <span id="stAmb">plasma</span>
+    <span id="stAmb">matrix</span>
     <div class="s-right">
       <span id="stCounts">0 words · 0 chars</span>
       <span id="stView">split</span>
@@ -632,8 +632,8 @@ body.lite #titlebar,body.lite #toolbar,body.lite #status{background:var(--bg2)!i
       <label>Ambience</label>
       <div class="seg" id="ambSeg">
         <button data-amb="off">off</button>
-        <button data-amb="plasma" class="on">plasma</button>
-        <button data-amb="matrix">matrix</button>
+        <button data-amb="plasma">plasma</button>
+        <button data-amb="matrix" class="on">matrix</button>
       </div>
     </div>
     <div class="field">
@@ -873,7 +873,7 @@ function applyTheme(i){
  * ========================================================================== */
 const cvs = $('#amb');
 let LITE = localStorage.getItem('scr_lite')==='1';
-let AMB  = localStorage.getItem('scr_amb') || 'plasma';
+let AMB  = localStorage.getItem('scr_amb') || 'matrix';   /* default ambience: matrix rain */
 const gl = cvs.getContext('webgl');
 let plasmaReady=false, U=null;
 if(gl){
@@ -918,7 +918,7 @@ function sizeAll(){
 }
 sizeAll(); addEventListener('resize', sizeAll);
 const t0=performance.now(); let lastNow=t0;
-function curStops(){ return (THEMES[+(localStorage.getItem('scr_theme')||0)]||THEMES[0])[1]; }
+function curStops(){ return (THEMES[+(localStorage.getItem('scr_theme')||13)]||THEMES[0])[1]; }   /* default theme 13 = Nebula */
 (function loop(now){
   const dt=Math.min((now-lastNow)/16.7,3); lastNow=now;
   cvs.style.display = (!LITE && AMB==='plasma' && plasmaReady)?'block':'none';
@@ -2324,7 +2324,7 @@ function restoreTabs(){
   loadActive(); renderTabs();
 }
 (function boot(){
-  applyTheme(+(localStorage.getItem('scr_theme')||0));
+  applyTheme(+(localStorage.getItem('scr_theme')||13));   /* default theme 13 = Nebula */
   applyCRT();
   seg('#ambSeg','amb',AMB); $('#stAmb').textContent=AMB;
   if(localStorage.getItem('scr_zen')==='1') setZen(true);
