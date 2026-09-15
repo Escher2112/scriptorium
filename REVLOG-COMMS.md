@@ -31,6 +31,7 @@ or personal data. If a line wouldn't belong in release notes, it doesn't belong 
 
 ## Revisions
 
+- 2026-09-15 · work-Lyra · FEAT-3 closed: double-clicking a `.md` now LOADS that file. The Windows launcher (`scriptorium-open.cmd`) was ignoring its `%1` file argument, so it always showed the last-open tab. It now hands the clicked file to the running page via the helper's control channel (`open_tab`) with a new `tools/scriptorium-send.py`; if no window is listening it opens one first, then delivers. Tools-only, no app change. Integration test passes (clicked file opens as the active tab, content + auto-title correct).
 - 2026-09-15 · work-Lyra · FEAT-2 closed: document title / name block. Editable title in the title bar, auto-derived from the first heading (or first line) until the user edits it, which locks it. The title sets the print/PDF name (`document.title`) and the default save filename; illegal filename chars are stripped. Fixes every print/PDF landing as "scriptorium". Per-tab, persisted. +13-case headless check, all pass.
 - 2026-09-15 · work-Lyra · BUG-1 closed: images gave the print path no height at first measure, so pages over-packed and the fixed-height print sheet clipped them silently. `render()` now takes an image second pass — the same trick `postRender()` already used for mermaid SVGs — and re-paginates once images have real dimensions; `print-pdf`/`page-snap` and the in-app print buttons wait for images too. Regression check added (fixture prints 6 sheets / 6 images, was 3/4). Harness 82/82.
 - 2026-09-10 · work-Lyra · raised BUG-1: content silently dropped when printing a document whose blocks alternate heading/image/caption/quote. Page view paginates correctly; the print path merges sheets and clips. Repro fixture added at `test/fixtures/bug1-image-blocks.md`.
@@ -105,6 +106,19 @@ The print CSS was left untouched, so the two pinned print checks (byte-identical
 stay green. **Verified:** the repro fixture now prints **6 sheets / 6 images** (was 3 / 4). A new harness
 check prints the fixture and asserts one image per sheet, so this regression cannot return silently.
 Harness **82/82**.
+
+### [FEAT-3] Double-clicking a .md opens Scriptorium but shows the last file, not the clicked one — CLOSED
+Raised: work-Lyra · 2026-09-15
+**Symptom.** `.md` is associated with `scriptorium-open.cmd "%1"`, so Windows passes the clicked file
+path — but the launcher ignored `%1` and only ever opened `scriptorium.html`, which restores its last
+saved tabs. So you always saw the last document, never the one you clicked.
+**Fix (work-Lyra · 2026-09-15).** The launcher now takes the file path and delivers it to the live page
+through the helper's control mailbox (`open_tab`, which already existed), via a new `tools/scriptorium-send.py`:
+it reads the file and pushes `{cmd:open_tab, args:{markdown,name}}`. If a page is already connected it opens
+there (new tab, no duplicate window); if none is listening the launcher opens a window first, then the sender
+blocks until it connects and delivers. Tools-only — no app rebuild. Uses the same `SCRIPTORIUM_PYTHON` the
+helper does. **Tests:** `--if-open` returns 3 (does nothing) when no page is connected; a headless
+integration test confirms the clicked file opens as the active tab with correct content and auto-title.
 
 ### [FEAT-2] Every printed/saved document is named "scriptorium" — no document title — CLOSED
 Raised: work-Lyra · 2026-09-15
