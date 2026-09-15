@@ -26,8 +26,9 @@ try {
   const cdp = await connectPage(); await cdp.init();
   await cdp.navigate(`http://127.0.0.1:${PORT}/scriptorium.html`); await new Promise(r => setTimeout(r, 1500));
   await cdp.send('Runtime.evaluate', { expression: `window.__md=${JSON.stringify(md)}` });
-  const n = await cdp.eval(`(function(){ src.value=window.__md; setView('render'); return document.querySelectorAll('#paper .page').length; })()`);
-  await new Promise(r => setTimeout(r, 600));
+  // wait for images to gain real dimensions before counting/printing — pagination re-flows once they load
+  const n = await cdp.eval(`(async function(){ src.value=window.__md; setView('render'); for(var t=0;t<80;t++){ var im=[].slice.call(document.querySelectorAll('#paper img')); if(im.length===0 || im.every(function(x){return x.complete && x.naturalHeight;})) break; await new Promise(function(r){setTimeout(r,50);}); } await new Promise(function(r){setTimeout(r,150);}); return document.querySelectorAll('#paper .page').length; })()`);
+  await new Promise(r => setTimeout(r, 300));
   const r = await cdp.send('Page.printToPDF', { preferCSSPageSize: true, printBackground: true, displayHeaderFooter: HEADERS });
   writeFileSync(resolve(outPdf), Buffer.from(r.data, 'base64'));
   console.log(`${n} sheet(s) → ${resolve(outPdf)} (${Math.round(Buffer.from(r.data, 'base64').length / 1024)} KB)${HEADERS ? ' [browser headers ON]' : ''}`);

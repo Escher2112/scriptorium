@@ -10,7 +10,7 @@ or personal data. If a line wouldn't belong in release notes, it doesn't belong 
 
 ## Build status
 
-**FULLY GREEN — 2026-08-27.** All tracked issues closed; full test harness passing **81/81**. Safe to pull.
+**FULLY GREEN — 2026-09-15.** All tracked issues closed; full test harness passing **82/82**. Safe to pull.
 
 ## Rules
 
@@ -31,6 +31,8 @@ or personal data. If a line wouldn't belong in release notes, it doesn't belong 
 
 ## Revisions
 
+- 2026-09-15 · work-Lyra · FEAT-2 closed: document title / name block. Editable title in the title bar, auto-derived from the first heading (or first line) until the user edits it, which locks it. The title sets the print/PDF name (`document.title`) and the default save filename; illegal filename chars are stripped. Fixes every print/PDF landing as "scriptorium". Per-tab, persisted. +13-case headless check, all pass.
+- 2026-09-15 · work-Lyra · BUG-1 closed: images gave the print path no height at first measure, so pages over-packed and the fixed-height print sheet clipped them silently. `render()` now takes an image second pass — the same trick `postRender()` already used for mermaid SVGs — and re-paginates once images have real dimensions; `print-pdf`/`page-snap` and the in-app print buttons wait for images too. Regression check added (fixture prints 6 sheets / 6 images, was 3/4). Harness 82/82.
 - 2026-09-10 · work-Lyra · raised BUG-1: content silently dropped when printing a document whose blocks alternate heading/image/caption/quote. Page view paginates correctly; the print path merges sheets and clips. Repro fixture added at `test/fixtures/bug1-image-blocks.md`.
 - 2026-08-27 · work-Lyra · reviewed FEAT-1 on a second machine (81/81); added an empty-target short-circuit to `applyEditInPlace` (was a harmless full scan before falling back).
 - 2026-08-27 · home-Lyra · FEAT-1 closed (caret-preserving apply_edit); harness 81/81; build marked FULLY GREEN.
@@ -49,7 +51,7 @@ or personal data. If a line wouldn't belong in release notes, it doesn't belong 
 
 ## Issues / Handoff
 
-### [BUG-1] Printing silently drops content — Page view and print disagree on pagination — OPEN
+### [BUG-1] Printing silently drops content — Page view and print disagree on pagination — CLOSED
 Raised: work-Lyra · 2026-09-10
 
 **Symptom.** A document whose body is a repeating `### heading / image / *caption* / > quote / paragraph`
@@ -92,6 +94,32 @@ never shows up until someone prints.
 
 **Workaround until fixed:** a manual `\newpage` before each image block. One image per sheet cannot
 overflow. Confirmed effective — a 14-image document went from 9/14 to 14/14 printed.
+
+**Closed: work-Lyra · 2026-09-15.** Root cause was image timing, not the CSS. `render()` measured page
+heights while the base64/remote `<img>` still reported zero height, so blocks over-packed onto too few
+`.page` divs; the fixed-height print sheet (`overflow:hidden`) then clipped the overflow — silently.
+Fix: `render()` now takes a **second pass for images** — exactly the pattern `postRender()` already used
+for mermaid SVGs — waiting for every `<img>` to reach `complete && naturalHeight`, then re-paginating.
+The in-app print buttons and the `print-pdf`/`page-snap` tools also wait for images before printing/counting.
+The print CSS was left untouched, so the two pinned print checks (byte-identical headers, page-count parity)
+stay green. **Verified:** the repro fixture now prints **6 sheets / 6 images** (was 3 / 4). A new harness
+check prints the fixture and asserts one image per sheet, so this regression cannot return silently.
+Harness **82/82**.
+
+### [FEAT-2] Every printed/saved document is named "scriptorium" — no document title — CLOSED
+Raised: work-Lyra · 2026-09-15
+**Symptom.** The page title was a hard-coded `<title>Scriptorium</title>` that nothing ever updated, so
+the browser's print-to-PDF used "Scriptorium" as the default filename for *every* document, and there was
+no place to name a document.
+**Fix (work-Lyra · 2026-09-15).** Added a **document title / name block** to the title bar: an editable
+title (`#docname`, contenteditable) above a muted filename line (`#docfile`). The title auto-derives from
+the first heading — or first non-empty line — of the document, and keeps tracking content until the user
+edits it, which locks it (clear it to unlock and re-derive). The title drives `document.title` (so the
+print/PDF name is the document, not "Scriptorium") and the default save filename (`fnFromTitle`, illegal
+chars stripped); an explicitly-saved filename still wins, so title and filename can diverge. Per-tab
+(`title` + `titleManual` on each tab), persisted to `localStorage`, restored on load. HTML export uses the
+title too. **Tests:** 13-case headless check (derive / fallback / manual lock / unlock / filename / sanitise)
+— all pass; full harness **82/82**.
 
 ### [FEAT-1] AI edits reset the caret to the top of the document — CLOSED
 Raised: work-Lyra · 2026-08-27

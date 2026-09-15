@@ -46,6 +46,8 @@ try {
   if (process.env.SNAP_BREAK_H1) await cdp.eval(`localStorage.setItem('scr_pgbreak_h1','1')`);   // chapter-per-page
   await new Promise(s => setTimeout(s, 800));   // let mermaid 2nd-pass + layout settle
   await cdp.eval(`render()`);                    // re-paginate with final metrics
+  // wait for images to gain real dimensions — pagination re-flows once they load (BUG-1 second pass)
+  await cdp.eval(`(async function(){ for(var t=0;t<80;t++){ var im=[].slice.call(document.querySelectorAll('#paper img')); if(im.length===0 || im.every(function(x){return x.complete && x.naturalHeight;})) break; await new Promise(function(r){setTimeout(r,50);}); } await new Promise(function(r){setTimeout(r,150);}); return 1; })()`);
   await new Promise(s => setTimeout(s, 250));
   // capture what PRINTS: print media flows the .page sheets into the document (fixed 8.5x11in,
   // app chrome hidden, no inner-pane scroll) so per-page clip coords are exact.

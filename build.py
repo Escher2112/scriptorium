@@ -47,5 +47,5 @@ print("build stamp: %s (%d)"%(stamp,ns))
 # Toast UI Editor ships a usage-statistics beacon (disabled via usageStatistics:false). Neutralise its endpoint
 # too, so the built file contains no analytics URL at all — SECURITY.md promises this; the harness checks it.
 out=out.replace("https://www.google-analytics.com/collect","about:blank#analytics-disabled")
-io.open(OUT,"w",encoding="utf-8").write(out)
+io.open(OUT,"w",encoding="utf-8",newline="\n").write(out)   # force LF on every platform (Windows text-mode would emit CRLF and thrash the diff)
 print("built %s  (%d inlines, %.1f MB)"%(OUT,n,len(out.encode("utf-8"))/1e6))

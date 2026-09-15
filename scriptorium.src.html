@@ -76,9 +76,16 @@ body.fx-screen #crt{display:block}
 .wordmark{font:600 15px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--hi);
   text-shadow:0 0 18px color-mix(in srgb,var(--hi) 40%,transparent);white-space:nowrap}
 .wordmark small{color:var(--dim);letter-spacing:.14em;font-size:9px;margin-left:8px}
-#docname{flex:1;min-width:0;font:13px var(--mono);letter-spacing:.04em;color:var(--dim);
+#docmeta{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1.1}
+#docname{max-width:100%;font:600 13px var(--mono);letter-spacing:.04em;color:var(--fg);
+  text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  padding:1px 6px;border:1px solid transparent;border-radius:5px;outline:none;cursor:text}
+#docname:hover{border-color:color-mix(in srgb,var(--fg) 22%,transparent)}
+#docname:focus{border-color:var(--accent);background:color-mix(in srgb,var(--fg) 6%,transparent);text-overflow:clip}
+#docname:empty::before{content:'Untitled';color:var(--dim)}
+#docfile{max-width:100%;font:10px var(--mono);letter-spacing:.03em;color:var(--dim);
   text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#docname .dirty{color:var(--accent)}
+#docfile .dirty{color:var(--accent)}
 .tb-right{display:flex;align-items:center;gap:6px}
 
 /* ---- buttons / chips ----------------------------------------------------- */
@@ -494,7 +501,10 @@ body.lite #titlebar,body.lite #toolbar,body.lite #status{background:var(--bg2)!i
   <!-- TITLE BAR -->
   <div id="titlebar">
     <div class="wordmark">SCRIPTORIUM<small>v2 · wysiwyg</small></div>
-    <div id="docname">untitled.md</div>
+    <div id="docmeta">
+      <div id="docname" contenteditable="plaintext-only" spellcheck="false" title="Document title — used as the print/PDF name and the default save filename. Click to edit; clear it to auto-name from the first heading.">untitled</div>
+      <div id="docfile">untitled.md</div>
+    </div>
     <div class="tb-right">
       <button class="btn icon" id="btnNew" data-icon="new" title="New (Ctrl+N)"></button>
       <button class="btn icon" id="btnOpen" data-icon="open" title="Open .md (Ctrl+O)"></button>
@@ -1143,6 +1153,7 @@ function postRender(){
  * ========================================================================== */
 const paper=$('#paper');
 let dirty=false, curName=localStorage.getItem('scr_name')||'untitled.md';
+let curTitle='', titleManual=false;   /* human doc title: drives print/PDF name + default save name; manual edit locks it */
 let tabs=[], activeTab=0, fileHandle=null;    /* multi-doc: each tab = {name,content,handle,dirty} */
 let view=localStorage.getItem('scr_view')||'write';
 if(view==='split') view='write';               /* v1 stored views migrate to the WYSIWYG surface */
@@ -1208,6 +1219,16 @@ function render(){
   if(page.childElementCount===0 && paper.childElementCount>1) paper.removeChild(page);
   paper.querySelectorAll('.page.measuring').forEach(function(pp){pp.classList.remove('measuring');});
   paper.style.zoom=prevZoom;                          /* restore CSS-var zoom */
+  /* SECOND PASS FOR IMAGES (BUG-1): base64/remote <img> have no height at first measure, so blocks
+     over-pack onto too few pages and the fixed-height print sheet then clips them — silently. Wait for
+     the images to gain real dimensions, then re-paginate. Same trick postRender() uses for mermaid SVGs. */
+  const pend=[...paper.querySelectorAll('img')].filter(im=>!(im.complete && im.naturalHeight));
+  if(pend.length && !render._imgWait){
+    render._imgWait=true;
+    Promise.all(pend.map(im=> im.decode ? im.decode().catch(()=>{})
+        : new Promise(res=>{ im.addEventListener('load',res,{once:true}); im.addEventListener('error',res,{once:true}); })))
+      .then(()=>{ render._imgWait=false; if(view==='render') render(); });   /* real heights → correct page breaks */
+  }
   postRender();
 }
 function counts(){
@@ -1218,9 +1239,38 @@ function markDirty(d){
   dirty=d; if(tabs[activeTab]) tabs[activeTab].dirty=d;
   $('#saveState').textContent=d?'unsaved':'saved';
   $('#saveDot').classList.toggle('live',d);
-  $('#docname').innerHTML= escHtml(curName)+(d?' <span class="dirty">●</span>':'');
+  applyDocName();
   const chip=document.querySelector('#tabbar .tab.on'); if(chip) chip.classList.toggle('dirty',d);
 }
+/* ---- document title (the name block): the print/PDF name + the default save filename --------------
+   Derived from the first real line of the document until the user edits the title by hand, which locks
+   it. The filename follows the title unless the user has saved under an explicit name. Change both and
+   they stay independent. ------------------------------------------------------------------------- */
+function deriveTitle(md){
+  const lines=String(md||'').replace(/\r/g,'').split('\n'); let inFence=false;
+  for(const raw of lines){
+    const l=raw.trim();
+    if(/^(`{3,}|~{3,})/.test(l)){ inFence=!inFence; continue; }
+    if(inFence || !l) continue;
+    const t=l.replace(/^#{1,6}\s+/,'').replace(/^>+\s*/,'').replace(/^[-*+]\s+/,'').replace(/^\d+[.)]\s+/,'')
+             .replace(/!\[[^\]]*\]\([^)]*\)/g,'').replace(/\[([^\]]*)\]\([^)]*\)/g,'$1')
+             .replace(/<[^>]+>/g,'').replace(/[*_`~]/g,'').replace(/\s+/g,' ').trim();
+    if(t) return t.slice(0,64);
+  }
+  return '';
+}
+function fnFromTitle(t){
+  const base=String(t||'').replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,' ').trim().slice(0,80);
+  return (base||'untitled')+'.md';
+}
+function defaultFileName(){ return (curName && curName!=='untitled.md') ? curName : fnFromTitle(curTitle); }
+function applyDocName(){
+  const dn=$('#docname'), df=$('#docfile');
+  if(dn && document.activeElement!==dn) dn.textContent = curTitle || '';   /* :empty::before shows "Untitled" */
+  if(df) df.innerHTML = escHtml(curName)+(dirty?' <span class="dirty">●</span>':'');
+  try{ document.title = curTitle || (curName!=='untitled.md' ? curName.replace(/\.(md|markdown|txt)$/i,'') : 'Scriptorium'); }catch(e){}
+}
+function refreshTitle(){ if(!titleManual) curTitle=deriveTitle(src.value); applyDocName(); }
 /* three views: write (WYSIWYG sheet) · source (markdown + live preview) · render (paginated Page) */
 function setView(v){
   if(v!=='write'&&v!=='source'&&v!=='render') v='write';
@@ -1240,7 +1290,7 @@ function onEditorChange(){
   if(!burstOpen){ burstOpen=true; snap(lastSettled); }      /* first keystroke after idle → snapshot the pre-burst doc */
   markDirty(true);
   clearTimeout(changeTimer);
-  changeTimer=setTimeout(()=>{ if(tabs[activeTab]) tabs[activeTab].content=src.value; counts(); persistTabs(); },150);
+  changeTimer=setTimeout(()=>{ if(tabs[activeTab]) tabs[activeTab].content=src.value; counts(); refreshTitle(); persistTabs(); },150);
   clearTimeout(settleTimer);
   settleTimer=setTimeout(()=>{ lastSettled=src.value; burstOpen=false; },1500);
 }
@@ -1350,14 +1400,15 @@ let persistTimer=null;
 function persistTabs(){
   clearTimeout(persistTimer);
   persistTimer=setTimeout(()=>{ try{
-    localStorage.setItem('scr_tabs', JSON.stringify(tabs.map(t=>({name:t.name,content:t.content,dirty:t.dirty}))));
+    localStorage.setItem('scr_tabs', JSON.stringify(tabs.map(t=>({name:t.name,content:t.content,dirty:t.dirty,title:t.title||'',titleManual:!!t.titleManual}))));
     localStorage.setItem('scr_active', String(activeTab));
   }catch(e){} },250);
 }
-function commitActive(){ const t=tabs[activeTab]; if(t){ t.content=src.value; t.name=curName; t.handle=fileHandle; t.dirty=dirty; } }
+function commitActive(){ const t=tabs[activeTab]; if(t){ t.content=src.value; t.name=curName; t.handle=fileHandle; t.dirty=dirty; t.title=curTitle; t.titleManual=titleManual; } }
 function loadActive(){
   const t=tabs[activeTab]; if(!t) return;
   src.value=t.content; curName=t.name; fileHandle=t.handle||null;
+  titleManual=!!t.titleManual; curTitle=t.title||''; if(!titleManual||!curTitle) curTitle=deriveTitle(src.value);
   lastSettled=src.value; burstOpen=false; resetEngineHistory();
   markDirty(!!t.dirty); counts(); if(view==='render') render();
 }
@@ -1379,7 +1430,7 @@ function renderTabs(){
 function switchTab(i){ if(i===activeTab || !tabs[i]) return; commitActive(); activeTab=i; loadActive(); renderTabs(); persistTabs(); src.focus(); }
 function newTab(content,name,handle){
   commitActive();
-  tabs.push({name:name||'untitled.md', content:content||'', handle:handle||null, dirty:false});
+  tabs.push({name:name||'untitled.md', content:content||'', handle:handle||null, dirty:false, title:'', titleManual:false});
   activeTab=tabs.length-1; loadActive(); renderTabs(); persistTabs(); src.focus(); toast('new tab');
 }
 function closeTab(i){
@@ -1388,12 +1439,12 @@ function closeTab(i){
   const wasActive=(i===activeTab);
   if(!wasActive) commitActive();
   tabs.splice(i,1);
-  if(!tabs.length) tabs.push({name:'untitled.md',content:'',handle:null,dirty:false});
+  if(!tabs.length) tabs.push({name:'untitled.md',content:'',handle:null,dirty:false,title:'',titleManual:false});
   if(wasActive){ activeTab=Math.min(i,tabs.length-1); loadActive(); }
   else if(i<activeTab){ activeTab--; }
   renderTabs(); persistTabs();
 }
-function afterSave(){ const t=tabs[activeTab]; if(t){ t.name=curName; t.handle=fileHandle; t.dirty=false; } markDirty(false); renderTabs(); persistTabs(); }
+function afterSave(){ const t=tabs[activeTab]; if(t){ t.name=curName; t.handle=fileHandle; t.dirty=false; t.title=curTitle; t.titleManual=titleManual; } markDirty(false); renderTabs(); persistTabs(); }
 
 /* ---- FILES — new / open / save (new/open create tabs) --------------------- */
 function newDoc(){ newTab(); }
@@ -1415,12 +1466,12 @@ async function saveDoc(){
   }
   if(window.showSaveFilePicker){
     try{
-      const h=await window.showSaveFilePicker({suggestedName:curName,types:[{description:'Markdown',accept:{'text/markdown':['.md']}}]});
+      const h=await window.showSaveFilePicker({suggestedName:defaultFileName(),types:[{description:'Markdown',accept:{'text/markdown':['.md']}}]});
       fileHandle=h; const w=await h.createWritable(); await w.write(text); await w.close();
       curName=h.name; afterSave(); toast('saved '+curName); return;
     }catch(e){ if(e.name==='AbortError') return; }
   }
-  download(curName, text, 'text/markdown'); afterSave(); toast('downloaded '+curName);
+  const fn=defaultFileName(); curName=fn; download(fn, text, 'text/markdown'); afterSave(); toast('downloaded '+fn);
 }
 /* Save As: write a COPY to a new file and point this tab at it — the original file is never touched */
 async function saveAsDoc(){
@@ -1444,7 +1495,7 @@ function download(name,data,type){
 /* self-contained HTML export — rendered page + minimal print-clean styles */
 function exportHTML(){
   const body=sanitizeHtml(md2html(src.value));
-  const title=curName.replace(/\.(md|markdown|txt)$/,'');
+  const title=(curTitle || curName.replace(/\.(md|markdown|txt)$/,'')) || 'untitled';
   const html=`<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>${escHtml(title)}</title>
 <style>
@@ -2095,7 +2146,7 @@ async function docCommand(cmd, a){
       if(a.family){ wrapSpan('font-family:'+a.family,'styled text'); }
       if(a.size){ wrapSpan('font-size:'+a.size,'sized text'); }
       return {ok:true, result:'applied font/size/colour to the selection'}; }
-    case 'render': case 'print': setView('render'); if(cmd==='print') setTimeout(()=>window.print(),200); return {ok:true, result:cmd==='print'?'opened the print dialog':'switched to Page view'};
+    case 'render': case 'print': if(cmd==='print'){ printDoc(); } else { setView('render'); } return {ok:true, result:cmd==='print'?'opened the print dialog':'switched to Page view'};
     case 'export_html': exportHTML(); return {ok:true, result:'exported '+curName.replace(/\.(md|markdown|txt)$/,'')+'.html'};
     case 'save': saveDoc(); return {ok:true, result:'save invoked'};
     default: return {ok:false, error:'unknown command: '+cmd};
@@ -2183,9 +2234,29 @@ function applyPgPad(){
     _pbt.onclick=function(){ var on=localStorage.getItem('scr_pgbreak_h1')!=='1'; localStorage.setItem('scr_pgbreak_h1',on?'1':'0'); _pbt.classList.toggle('on',on); if(typeof view!=='undefined'&&view==='render'&&typeof render==='function') render(); }; }
   applyPgPad(); })();
 
+/* print: switch to Page view, let images reach real dimensions so pagination is final, then hand off to
+   the browser's print dialog. The PDF/print name comes from document.title (= the document title). */
+function printDoc(){
+  setView('render');
+  let tries=0;
+  (function wait(){
+    const pending=[...paper.querySelectorAll('img')].some(im=>!(im.complete && im.naturalHeight));
+    if(pending && tries++<50){ setTimeout(wait,60); return; }
+    setTimeout(()=>{ try{ window.print(); }catch(e){} },90);
+  })();
+}
+/* editable document title — the name block in the title bar */
+(function(){ const dn=$('#docname'); if(!dn) return;
+  const commit=()=>{ const v=(dn.textContent||'').replace(/\s+/g,' ').trim();
+    if(v){ curTitle=v; titleManual=true; } else { titleManual=false; curTitle=deriveTitle(src.value); }
+    if(tabs[activeTab]){ tabs[activeTab].title=curTitle; tabs[activeTab].titleManual=titleManual; }
+    applyDocName(); persistTabs(); };
+  dn.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); dn.blur(); } else if(e.key==='Escape'){ e.preventDefault(); applyDocName(); dn.blur(); } });
+  dn.addEventListener('blur',commit);
+})();
 /* title-bar buttons */
 $('#btnNew').onclick=newDoc; $('#btnOpen').onclick=openDoc; $('#btnSave').onclick=saveDoc; $('#btnSaveAs').onclick=saveAsDoc;
-$('#btnPrint').onclick=()=>{ setView('render'); setTimeout(()=>window.print(),120); };
+$('#btnPrint').onclick=printDoc;
 $('#btnExport').onclick=exportHTML; $('#btnAI').onclick=()=>aiOpen();
 
 /* ========================================================================== *
@@ -2200,7 +2271,7 @@ addEventListener('keydown',e=>{
   else if(k==='s'){ e.preventDefault(); saveDoc(); }
   else if(k==='o'){ e.preventDefault(); openDoc(); }
   else if(k==='n'){ e.preventDefault(); newDoc(); }
-  else if(k==='p'){ e.preventDefault(); setView('render'); setTimeout(()=>window.print(),120); }
+  else if(k==='p'){ e.preventDefault(); printDoc(); }
   else if(k==='e'){ e.preventDefault(); setView(view==='write'?'source':view==='source'?'render':'write'); }
   else if(k==='f'){ e.preventDefault(); openFind(); }      /* Find & Replace */
   else if(k==='a'){ if(inEditor){ return; }                 /* inside the sheet Ctrl+A = native select-all; assistant only when focus is outside */
@@ -2242,7 +2313,7 @@ Write straight onto the page — it stays a real \`.md\` file underneath. **Ctrl
 function restoreTabs(){
   let stored=null; try{ stored=JSON.parse(localStorage.getItem('scr_tabs')||'null'); }catch(e){}
   if(stored && stored.length){
-    tabs=stored.map(t=>({name:t.name||'untitled.md', content:t.content||'', handle:null, dirty:!!t.dirty}));
+    tabs=stored.map(t=>({name:t.name||'untitled.md', content:t.content||'', handle:null, dirty:!!t.dirty, title:t.title||'', titleManual:!!t.titleManual}));
     activeTab=Math.min(Math.max(0,+(localStorage.getItem('scr_active')||0)), tabs.length-1);
   } else {
     const draft=localStorage.getItem('scr_draft');   // migrate an old single-doc draft
