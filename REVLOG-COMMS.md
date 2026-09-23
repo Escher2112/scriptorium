@@ -10,7 +10,7 @@ or personal data. If a line wouldn't belong in release notes, it doesn't belong 
 
 ## Build status
 
-**FULLY GREEN — 2026-09-15.** All tracked issues closed; full test harness passing **82/82**. Safe to pull.
+**GREEN — 2026-09-23.** BUG-4 + BUG-5 closed; the harness now has **85** checks — 85/85 expected on Linux; on macOS 84/85 (BUG-3: the undo check sends Ctrl+Z, macOS binds undo to Cmd+Z — a test-portability issue, not an app bug). Safe to pull.
 
 ## Rules
 
@@ -31,6 +31,8 @@ or personal data. If a line wouldn't belong in release notes, it doesn't belong 
 
 ## Revisions
 
+- 2026-09-23 · home-Lyra · BUG-4 + BUG-5 closed (both reported by the user, both Write-view mermaid preview cards). BUG-4 "pauses then re-renders with a pop in": every scroll pass cleared the card layer and rebuilt every card 30 ms late, so a card rode the text for a frame or two and was then replaced by a new node. Cards are now kept (one per fence, keyed by diagram text + occurrence), reuse the cached SVG, are repositioned synchronously in the scroll event, created only when their fence first comes on screen and removed only when it is gone; zoom and Lite changes re-place them. BUG-5 "rides the page breaks": the Write view is one Letter-height sheet whose content scrolls inside it; text is clipped at the sheet's top/bottom edge but the card layer was clipped only by the pane, so a card drew on past the edge into the gap. The layer is now clipped to the sheet's visible box, so a diagram splits at the edge exactly like the text. Two new checks, each red before and green after; BUG-2's zoom check stays green. Harness 85 (macOS 84/85, BUG-3 only).
+- 2026-09-23 · home-Lyra · BUG-2 closed: Write-view mermaid preview cards were misplaced and oversized at any document zoom but 100% (reported by the user). The card layer lives inside the zoomed editor pane, but card geometry came from `getBoundingClientRect()` (screen px, already zoomed) — so it was zoomed twice (at 160%: card 1.6x wide, 89 px right of its fence). Card px are now converted by the layer's MEASURED scale (screen width / layout width), which also stays correct on a browser that reports unzoomed rects. New check: card tracks its fence at 160% (was red before the fix, green after); measured by hand at 50/100/130/160/200/250% — offset 0, width 1.00x at every step. Page view was never affected. Raised BUG-3 (macOS harness portability).
 - 2026-09-15 · work-Lyra · default look changed to **Nebula** theme (index 13) + **matrix** ambience (matrix rain in nebula colours). Only the fallbacks changed — a saved theme/ambience still wins. This surfaced and fixed a latent bug: the matrix `#rain` canvas was not in the print/lite hide lists, so the rain bled into printouts (and broke the byte-identical print check); added `#rain` to both. Harness 82/82.
 - 2026-09-15 · work-Lyra · FEAT-3 closed: double-clicking a `.md` now LOADS that file. The Windows launcher (`scriptorium-open.cmd`) was ignoring its `%1` file argument, so it always showed the last-open tab. It now hands the clicked file to the running page via the helper's control channel (`open_tab`) with a new `tools/scriptorium-send.py`; if no window is listening it opens one first, then delivers. Tools-only, no app change. Integration test passes (clicked file opens as the active tab, content + auto-title correct).
 - 2026-09-15 · work-Lyra · FEAT-2 closed: document title / name block. Editable title in the title bar, auto-derived from the first heading (or first line) until the user edits it, which locks it. The title sets the print/PDF name (`document.title`) and the default save filename; illegal filename chars are stripped. Fixes every print/PDF landing as "scriptorium". Per-tab, persisted. +13-case headless check, all pass.
@@ -52,6 +54,50 @@ or personal data. If a line wouldn't belong in release notes, it doesn't belong 
 ---
 
 ## Issues / Handoff
+
+### [BUG-5] Write view: a diagram card "rides the page breaks" — draws past the sheet edge while scrolling — CLOSED
+Raised: user report via home-Lyra · 2026-09-23
+
+**What a "page break" is in Write view.** There are no page-break guides or separate sheets in Write view, and `\newpage`
+shows there as a plain paragraph with that text. The visible edge is the sheet itself: the WYSIWYG surface is ONE
+Letter-height sheet (816 × 1056 px — the template's `min-height:1056px` plus the engine's `overflow:auto; height:inherit`
+on the contents element) whose content scrolls INSIDE it, within an outer scroller that shows a gap above and below the
+sheet. Text is clipped at the sheet's top and bottom edges. The diagram card layer sits over the whole pane and was clipped
+only by the pane, so a card kept drawing past the sheet edge into the gap.
+**Closed: home-Lyra · 2026-09-23.** The card layer is clipped (`clip-path: inset(...)`, recomputed on every placement, zoom-aware) to the
+sheet's visible box (the sheet ∩ the outer scroller). A diagram now splits at the sheet edge exactly the way the text around it
+does. Page view already paginates diagrams whole and is untouched. **Test:** new check scrolls a card so it straddles the
+sheet's bottom edge, then its top edge, and hit-tests just inside (must be the card) and just past the edge (must not be) —
+before the fix `past-edge=true` at both edges, after `past-edge=false`, `inside=true`. Also verified by eye at 70% zoom.
+**Open question for later (not changed here):** the Write view scrolls inside a fixed one-page sheet rather than growing
+the sheet with the document. That may be what makes the sheet edge read as a page break. Changing it would be a layout
+decision, not a bug fix.
+
+### [BUG-4] Write view: mermaid diagrams "pause then re-render with a pop in" while scrolling — CLOSED
+Raised: user report via home-Lyra · 2026-09-23
+
+**Cause.** The preview ran on every scroll (30 ms debounce): it cleared the card layer and rebuilt a card for every
+on-screen fence. Between the scroll and the rebuild the old card sat still while the text moved (measured: 60 px off its
+fence on the next frame), then a brand-new node replaced it: the pop.
+**Closed: home-Lyra · 2026-09-23.** Cards are kept in a map keyed by diagram text + occurrence number, hold the cached SVG, and
+are only repositioned — synchronously in the scroll event, so before that frame paints. A card is created when its fence
+first comes on screen (from the render cache; uncached diagrams render in the background and then place), hidden when off
+screen, and removed only when its fence disappears or its text changes. Edits and resizes re-place on the next frame; zoom
+and Lite changes re-place too, so BUG-2's zoom fix holds for kept cards. **Test:** new check scrolls the sheet with a card on
+screen and asserts the SAME card node survives and stays within 3 px of its fence on the very next frame and 450 ms later.
+Before the fix: `next frame: same=true dx=0 dy=60 | +450ms: same=false`. After: `same=true dx=0 dy=0` at both.
+Also measured by hand: 25 consecutive scroll frames, 0 px worst misalignment, 0 nodes replaced; zoom 160/70/220/100% with
+kept cards, 0.1 px worst.
+
+### [BUG-3] macOS: the undo check fails — test sends Ctrl+Z, macOS undo is Cmd+Z — OPEN
+Raised: home-Lyra · 2026-09-23
+
+`[undo] Ctrl+Z removes typed text (engine history)` fails on macOS only, at this commit AND at the previous one (so not a
+regression). The app's undo works; the editor binds `Mod-z`, which is Cmd on a Mac. Fix idea: send the platform's
+modifier (Meta on macOS, Ctrl elsewhere) in `test/run.mjs`. Needs a check on Linux that it stays green.
+
+### [BUG-2] Write view: mermaid preview cards misplaced/oversized when the document is zoomed — CLOSED
+Raised: user report via home-Lyra · 2026-09-23 · closed same day — see Revisions 2026-09-23.
 
 ### [BUG-1] Printing silently drops content — Page view and print disagree on pagination — CLOSED
 Raised: work-Lyra · 2026-09-10

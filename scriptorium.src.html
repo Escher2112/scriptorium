@@ -2062,34 +2062,89 @@ $('#aiNewChat').onclick=newChat;
    code block; Page view prints the diagram). Lives in a layer OUTSIDE the editor DOM so ProseMirror never sees it.
    (2026-08-26) he writes in Write view and saw only raw fences. ---- */
 const mmdLayer=document.createElement('div'); mmdLayer.id='mmdLayer'; $('#editPane').appendChild(mmdLayer);
-let mmdTimer=null, mmdBusy=false;
+let mmdTimer=null, mmdBusy=false, mmdRaf=0;
 function mmdSchedule(ms){ clearTimeout(mmdTimer); mmdTimer=setTimeout(mermaidPreview, ms==null?350:ms); }
 const MMD_GAP=340;                /* must match the stylesheet reservation on pre.language-mermaid */
+/* ⛔ BUG-4 (2026-09-23 — "as I scroll scripto, the mermaid pauses then re-renders with a pop in"). Every scroll pass used to
+   clear the layer and rebuild EVERY card 30 ms late: for a frame or two the card rode the text, then a brand-new node popped
+   in. Cards are now KEPT: one per fence, keyed by diagram text + its occurrence number (so inserting another diagram doesn't
+   re-key this one), holding the cached SVG. A scroll only REPOSITIONS them, synchronously in the scroll event — before that
+   frame paints — so a card never lags its fence. Cards are created only when their fence first comes on screen (from the
+   cache; the async mermaid.render happens in mermaidPreview) and removed only when their fence is gone. */
+const mmdCards=new Map();         /* key → card element */
+function mmdFences(){
+  const seen=new Map();
+  return [...document.querySelectorAll('#tui .toastui-editor-ww-container pre code[data-language="mermaid"]')].map(c=>{
+    const pre=c.closest('pre'), txt=pre.textContent.replace(/\n$/,''), n=seen.get(txt)||0; seen.set(txt,n+1);
+    return {pre, txt, key:n+'\u0001'+txt};
+  });
+}
+function mmdClear(){ mmdCards.forEach(c=>c.remove()); mmdCards.clear(); mmdLayer.style.clipPath=''; }
+/* ⛔ BUG-5 (2026-09-23 — "the mermaid isn't cleanly splitting as I scroll pages, it rides the page breaks"). The Write view is ONE
+   Letter-height sheet (.toastui-editor-contents: min-height 1056px here + the engine's overflow:auto/height:inherit) whose content
+   scrolls INSIDE it, inside the outer scroller. Text is clipped at the sheet's top and bottom edges; the card layer was clipped
+   only by the pane, so a card drew on past the sheet edge into the gap. The layer is now clipped to the sheet's VISIBLE padding
+   box (sheet ∩ outer scroller), so a diagram splits at the edge exactly the way the text around it does. */
+function mmdPlace(){
+  mmdRaf=0;
+  if(!window.mermaid || view!=='write' || document.body.classList.contains('lite')){ if(mmdCards.size) mmdClear(); return; }
+  const fences=mmdFences(), live=new Set(fences.map(f=>f.key));
+  mmdCards.forEach((c,k)=>{ if(!live.has(k)){ c.remove(); mmdCards.delete(k); } });   /* fence gone, or its text changed */
+  if(!fences.length){ mmdLayer.style.clipPath=''; return; }
+  const sheet=document.querySelector('#tui .toastui-editor-ww-container .toastui-editor-contents');
+  const lr=mmdLayer.getBoundingClientRect();
+  /* ⛔ DOUBLE ZOOM (fixed 2026-09-23, BUG-2 — "when I change the size on Zoom, it's screwing up the Mermaid diagrams").
+     getBoundingClientRect() is in SCREEN px, already scaled by the document zoom; #mmdLayer lives INSIDE the zoomed
+     #editPane, so px written here are scaled AGAIN — at 160% the card was 1.6x wide and 89 px right of its fence.
+     Convert screen px → the layer's own px by the layer's MEASURED scale (not ZOOM), which also stays right on a
+     browser that reports unzoomed rects (scale 1). maxHeight is already in layer px (it matches the fence's
+     zoomed margin reservation), so it is not converted. */
+  const zs=(lr.width/mmdLayer.offsetWidth)||1;
+  /* visible sheet band in SCREEN px (the text's own clip): sheet padding box ∩ the outer scroller ∩ the layer */
+  let top=lr.top, bottom=lr.bottom;
+  if(sheet){ const s=sheet.getBoundingClientRect(), sz=(s.width/sheet.offsetWidth)||zs, o=sheet.parentElement.getBoundingClientRect();
+    top=Math.max(top, o.top, s.top+sheet.clientTop*sz); bottom=Math.min(bottom, o.bottom, s.top+(sheet.clientTop+sheet.clientHeight)*sz); }
+  const cT=Math.max(0,(top-lr.top)/zs), cB=Math.max(0,(lr.bottom-bottom)/zs);
+  mmdLayer.style.clipPath=`inset(${cT}px 0px ${cB}px 0px)`;
+  let missing=false;
+  for(const f of fences){
+    const r=f.pre.getBoundingClientRect();
+    const onScreen=!(r.bottom+2+MMD_GAP*zs<top || r.bottom>bottom);   /* the card's reserved band touches the visible sheet */
+    let card=mmdCards.get(f.key);
+    if(!card){
+      if(!onScreen) continue;                                          /* create lazily, when it first comes on screen */
+      const c=mermaidSvg.get(f.txt); if(!c){ missing=true; continue; } /* not rendered yet — mermaidPreview renders + re-places */
+      card=document.createElement('div'); card.className='mmd-card'+(c.error?' err':'');
+      card.innerHTML=c.error ? '<div class="mmd-h">✕ diagram does not parse — edit the fence on the Source tab</div><div class="mmd-e">'+escHtml(c.error)+'</div>' : c.svg;
+      card.style.maxHeight=(MMD_GAP-8)+'px';
+      mmdLayer.appendChild(card); mmdCards.set(f.key,card);
+    }
+    const disp=onScreen?'':'none'; if(card.style.display!==disp) card.style.display=disp;
+    if(!onScreen) continue;
+    const L=((r.left-lr.left)/zs)+'px', T=((r.bottom-lr.top+2)/zs)+'px', Wd=(r.width/zs)+'px';
+    if(card.style.left!==L) card.style.left=L; if(card.style.top!==T) card.style.top=T; if(card.style.width!==Wd) card.style.width=Wd;
+  }
+  if(missing) mmdSchedule(60);
+}
+function mmdPlaceSoon(){ if(!mmdRaf) mmdRaf=requestAnimationFrame(mmdPlace); }
+/* renders any diagram not yet in the cache (async), then places. Never clears the layer. */
 async function mermaidPreview(){
   if(mmdBusy){ mmdSchedule(200); return; } mmdBusy=true;
   try{
-    mmdLayer.innerHTML='';
-    if(!window.mermaid || view!=='write' || document.body.classList.contains('lite')) return;
-    const pane=$('#editPane'), pr=pane.getBoundingClientRect();
-    const pres=[...document.querySelectorAll('#tui .toastui-editor-ww-container pre code[data-language="mermaid"]')].map(c=>c.closest('pre'));
-    if(!pres.length) return;
-    for(const [i,pre] of pres.entries()){
-      const txt=pre.textContent.replace(/\n$/,''); let c=mermaidSvg.get(txt);
-      if(!c){ try{ const r=await window.mermaid.render('scr-ww-'+Date.now().toString(36)+'-'+i,txt); c={svg:r.svg}; }
-              catch(e){ c={error:String((e&&e.message)||e).replace(/\s+/g,' ').slice(0,240)}; } mermaidSvg.set(txt,c); }
+    if(!window.mermaid || view!=='write' || document.body.classList.contains('lite')){ mmdClear(); return; }
+    const todo=[...new Set(mmdFences().map(f=>f.txt))].filter(t=>!mermaidSvg.has(t));
+    for(const [i,txt] of todo.entries()){
+      let c; try{ const r=await window.mermaid.render('scr-ww-'+Date.now().toString(36)+'-'+i,txt); c={svg:r.svg}; }
+             catch(e){ c={error:String((e&&e.message)||e).replace(/\s+/g,' ').slice(0,240)}; }
+      mermaidSvg.set(txt,c);
       if(view!=='write') return;
-      const r=pre.getBoundingClientRect();
-      if(r.bottom<pr.top-MMD_GAP||r.top>pr.bottom) continue;      /* whole thing off-screen */
-      const card=document.createElement('div'); card.className='mmd-card'+(c.error?' err':'');
-      card.innerHTML=c.error ? '<div class="mmd-h">✕ diagram does not parse — edit the fence on the Source tab</div><div class="mmd-e">'+escHtml(c.error)+'</div>' : c.svg;
-      card.style.left=(r.left-pr.left)+'px'; card.style.top=(r.bottom-pr.top+2)+'px'; card.style.width=r.width+'px'; card.style.maxHeight=(MMD_GAP-8)+'px';
-      mmdLayer.appendChild(card);
     }
+    mmdPlace();
   } finally{ mmdBusy=false; }
 }
-new MutationObserver(()=>mmdSchedule()).observe($('#tui'),{childList:true,subtree:true,characterData:true});
-$('#editPane').addEventListener('scroll',()=>mmdSchedule(30),true);
-addEventListener('resize',()=>mmdSchedule(60));
+new MutationObserver(()=>{ mmdPlaceSoon(); mmdSchedule(); }).observe($('#tui'),{childList:true,subtree:true,characterData:true});
+$('#editPane').addEventListener('scroll',()=>mmdPlace(),true);   /* synchronous: reposition before this frame paints */
+addEventListener('resize',()=>{ mmdPlaceSoon(); mmdSchedule(60); });
 
 /* ========================================================================== *
  *  SELECTION ACTION BUTTON — "✦ ask about this" floats by a highlight        *
@@ -2191,7 +2246,7 @@ document.querySelectorAll('#crtScanSeg button').forEach(b=>b.onclick=()=>{ CRT.s
 $('#cleanPageTgl').onclick=()=>{ CRT.cleanPage=(CRT.cleanPage===false); applyCRT(); };
 $('#viewSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(b) setView(b.dataset.view); });
 function setLite(on){ LITE=on; document.body.classList.toggle('lite',on); localStorage.setItem('scr_lite',on?'1':'0');
-  $('#liteTgl').classList.toggle('on',on); applyCRT(); }
+  $('#liteTgl').classList.toggle('on',on); applyCRT(); if(typeof mmdSchedule==='function') mmdSchedule(0); }
 function setZen(on){ document.body.classList.toggle('zen',on); localStorage.setItem('scr_zen',on?'1':'0'); $('#zenTgl').classList.toggle('on',on); $('#btnZen').classList.toggle('on',on); }
 $('#liteTgl').onclick=()=>setLite(!LITE);
 $('#controlTgl').onclick=()=>{ controlOn=!controlOn; localStorage.setItem('scr_control',controlOn?'1':'0'); setControlToggle(); toast(controlOn?'remote control ON — an agent can drive this':'remote control OFF'); };
@@ -2206,6 +2261,7 @@ function setZoom(z){
   $('#zoomReset').textContent=Math.round(ZOOM*100)+'%';
   localStorage.setItem('scr_zoom',String(ZOOM));
   if(typeof updateScanMask==='function') updateScanMask();
+  if(typeof mmdPlaceSoon==='function') mmdPlaceSoon();   /* kept diagram cards follow the new layout (BUG-2/BUG-4) */
 }
 $('#zoomOut').onclick=()=>setZoom(ZOOM-0.1);
 $('#zoomIn').onclick=()=>setZoom(ZOOM+0.1);

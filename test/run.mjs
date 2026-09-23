@@ -171,7 +171,53 @@ try {
   await check('Mermaid renders a fence to an SVG in Page view (no [mermaid] source box)', () => cdp.waitFor(`!!document.querySelector('#paper .mermaid svg') && !document.querySelector('#paper .mermaid-src')`, 8000).then(v => ({ ok: !!v })));
   await E(`setView('write')`);
   await check('Write view shows a rendered preview card beside a valid mermaid fence', () => cdp.waitFor(`!!document.querySelector('#mmdLayer .mmd-card svg')`, 8000).then(v => ({ ok: !!v })));
+  // 2026-09-23 (the user: "when I change the size on Zoom, it's screwing up the Mermaid diagrams"): #mmdLayer lives INSIDE the zoomed
+  // #editPane, but card geometry came from getBoundingClientRect (already zoomed) → zoomed twice: at 160% the card was 1.6x wide
+  // and 89 px right of its fence. The card must track its fence at any zoom.
+  await check('Write-view diagram card tracks its fence at 160% zoom (no double zoom)', () => E(`(async function(){ setZoom(1.6); await new Promise(function(r){setTimeout(r,250);}); mermaidPreview(); var card=null; for(var t=0;t<50;t++){ await new Promise(function(r){setTimeout(r,100);}); card=document.querySelector('#mmdLayer .mmd-card'); if(card) break; } var pre=document.querySelector('#tui .toastui-editor-ww-container pre.language-mermaid'); var ok=false, info='no card or fence'; if(card&&pre){ var p=pre.getBoundingClientRect(), c=card.getBoundingClientRect(); ok=Math.abs(c.left-p.left)<3 && Math.abs(c.width-p.width)<3 && Math.abs(c.top-p.bottom)<8; info='fence L'+Math.round(p.left)+' W'+Math.round(p.width)+' B'+Math.round(p.bottom)+' | card L'+Math.round(c.left)+' W'+Math.round(c.width)+' T'+Math.round(c.top); } setZoom(1); return {ok:ok, info:info}; })()`));
   await check('Write view HIDES the mermaid source fence (source lives on the Source tab)', () => E(`(function(){var pre=document.querySelector('#tui .toastui-editor-ww-container pre.language-mermaid'); if(!pre) return false; var r=pre.getBoundingClientRect(); var cs=getComputedStyle(pre); return r.height<4 && cs.opacity==='0';})()`));
+  // Write view = ONE Letter-height sheet (.toastui-editor-contents, overflow:auto) whose content scrolls INSIDE it, inside an outer
+  // scroller. The helpers below: a long doc with one diagram; `sheet` = the inner scroller; `clip` = its visible padding box.
+  const MMD_SCROLL_DOC = `(function(){ var N=String.fromCharCode(10), para='Body text filler to occupy vertical space across the sheet, enough words to wrap a couple of lines each time. '.repeat(3); var d='# Scroll'+N+N; for(var i=0;i<8;i++) d+=para+N+N; d+='\x60\x60\x60mermaid'+N+'flowchart LR'+N+'  S1[Scroll] --> S2[Test]'+N+'\x60\x60\x60'+N+N; for(var i=0;i<14;i++) d+=para+N+N; newTab(d,'scroll.md'); setView('write'); setZoom(1); })()`;
+  const MMD_HELPERS = `var W=function(ms){return new Promise(function(r){setTimeout(r,ms);});};
+    var frame=function(){return new Promise(function(r){requestAnimationFrame(function(){r();});});};
+    var sheet=document.querySelector('#tui .toastui-editor-ww-container .toastui-editor-contents'), outer=sheet.parentElement;
+    var fence=function(){return document.querySelector('#tui .toastui-editor-ww-container pre.language-mermaid');};
+    var clip=function(){var r=sheet.getBoundingClientRect(), o=outer.getBoundingClientRect(); return {top:Math.max(o.top,r.top+sheet.clientTop), bottom:Math.min(o.bottom,r.top+sheet.clientTop+sheet.clientHeight)};};
+    var scrollSheet=function(el,to){ return new Promise(function(res){ el.addEventListener('scroll',function(){ frame().then(res); },{once:true}); el.scrollTop=to; }); };
+    var waitCard=async function(){ for(var t=0;t<60;t++){ var c=document.querySelector('#mmdLayer .mmd-card svg'); if(c) return c.closest('.mmd-card'); await W(100); } return null; };`;
+  // BUG-4 (2026-09-23, the user: "as I scroll scripto, the mermaid pauses then re-renders with a pop in"): every scroll pass cleared
+  // #mmdLayer and rebuilt every card, 30 ms late — the card rode the text for a frame or two, then a NEW node popped in.
+  await check('BUG-4: scrolling keeps the SAME diagram card node, aligned to its fence on the very next frame (no rebuild / pop-in)', () => E(`(async function(){ ${MMD_SCROLL_DOC}; ${MMD_HELPERS}
+    for(var t=0;t<40&&!fence();t++) await W(100); if(!fence()) return {ok:false,info:'no fence'};
+    await W(300); await scrollSheet(outer, 0);   /* opening a tab parks the caret and scrolls both scrollers */
+    await scrollSheet(sheet, sheet.scrollTop + fence().getBoundingClientRect().top - (clip().top+160));
+    var c0=await waitCard(); if(!c0) return {ok:false,info:'no card'}; await W(450);
+    c0=document.querySelector('#mmdLayer .mmd-card');
+    var meas=function(){ var c=document.querySelector('#mmdLayer .mmd-card'), p=fence().getBoundingClientRect(), r=c?c.getBoundingClientRect():null;
+      return {same:c===c0, dx:r?Math.abs(r.left-p.left):999, dy:r?Math.abs(r.top-(p.bottom+2)):999}; };
+    await scrollSheet(sheet, sheet.scrollTop+60); var a=meas();          /* the frame the scroll paints in */
+    await W(450); var b=meas();                                          /* after any debounced re-sync */
+    var ok=a.same&&b.same&&a.dx<3&&a.dy<3&&b.dx<3&&b.dy<3;
+    return {ok:ok, info:'next frame: same='+a.same+' dx='+Math.round(a.dx)+' dy='+Math.round(a.dy)+' | +450ms: same='+b.same+' dx='+Math.round(b.dx)+' dy='+Math.round(b.dy)}; })()`));
+  // BUG-5 (2026-09-23, the user: "the mermaid isn't cleanly splitting as I scroll pages, it rides the page breaks"): text is clipped
+  // at the sheet's top/bottom edge; the card lived in a layer clipped only by the pane, so it drew on past the edge into the gap.
+  await check('BUG-5: a diagram card straddling the sheet edge is clipped at the edge like the text (bottom + top)', () => E(`(async function(){ ${MMD_HELPERS}
+    if(!fence()||!document.querySelector('#mmdLayer .mmd-card')) return {ok:false,info:'no fence/card (BUG-4 setup failed)'};
+    var hit=function(x,y){ var e=document.elementFromPoint(x,y); return !!(e&&e.closest&&e.closest('.mmd-card')); };
+    var probe=async function(edge){
+      if(edge==='bottom'){ await scrollSheet(outer, outer.scrollHeight); await scrollSheet(sheet, sheet.scrollTop + fence().getBoundingClientRect().bottom - (clip().bottom-30)); }
+      else { await scrollSheet(outer, 0); await scrollSheet(sheet, sheet.scrollTop + fence().getBoundingClientRect().bottom - (clip().top-30)); }
+      await W(450);
+      var card=document.querySelector('#mmdLayer .mmd-card'); if(!card) return {ok:false,s:edge+': no card'};
+      var r=card.getBoundingClientRect(), k=clip(), x=r.left+r.width/2, pane=document.getElementById('editPane').getBoundingClientRect();
+      var straddles = edge==='bottom' ? (r.top<k.bottom-12 && r.bottom>k.bottom+12 && k.bottom+10<pane.bottom) : (r.top<k.top-12 && r.bottom>k.top+12 && k.top-10>pane.top);
+      if(!straddles) return {ok:false,s:edge+': setup did not straddle (card '+Math.round(r.top)+'..'+Math.round(r.bottom)+' edge '+Math.round(edge==='bottom'?k.bottom:k.top)+')'};
+      var inside = edge==='bottom' ? hit(x,k.bottom-8) : hit(x,k.top+8), outside = edge==='bottom' ? hit(x,k.bottom+8) : hit(x,k.top-8);
+      return {ok:inside&&!outside, s:edge+': inside='+inside+' past-edge='+outside};
+    };
+    var b=await probe('bottom'), t=await probe('top');
+    return {ok:b.ok&&t.ok, info:b.s+' | '+t.s}; })()`));
   await E(`newTab('# Bad\\n\\n\x60\x60\x60mermaid\\nbarChart\\n    "A": 1\\n\x60\x60\x60\\n','bad.md'); setView('write');`);
   await check('an invalid diagram type shows a parse-error card (text, not colour alone)', () => cdp.waitFor(`(function(){var c=document.querySelector('#mmdLayer .mmd-card.err'); return !!c && /does not parse/.test(c.textContent) && /No diagram type/.test(c.textContent);})()`, 8000).then(v => ({ ok: !!v })));
   await check('document tools validate mermaid and hand the parser error back to the model', () => E(`(async function(){var r=await execTool('append_text',{markdown:'\x60\x60\x60mermaid\\nlineChart\\n  x: 1\\n\x60\x60\x60'}); var ok=await execTool('append_text',{markdown:'\x60\x60\x60mermaid\\nxychart-beta\\n    x-axis ["A","B"]\\n    y-axis "s" 0 --> 10\\n    bar [3,4]\\n\x60\x60\x60'}); return /^OK: appended/.test(r) && /WARNING: mermaid block 1 does NOT parse/.test(r) && /parsed OK/.test(ok);})()`));
