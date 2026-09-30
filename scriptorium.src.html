@@ -1007,7 +1007,16 @@ function inline(s){
   // protect inline code first
   const codes=[]; s=s.replace(/`([^`]+)`/g,(m,c)=>{codes.push(c);return ` C${codes.length-1} `;});
   // protect inline math $...$
-  const maths=[]; s=s.replace(/\$([^$\n]+)\$/g,(m,c)=>{maths.push(c);return ` M${maths.length-1} `;});
+  // A bare $...$ scan treats ANY two dollar signs on a line as a math pair, so prose with two
+  // dollar amounts ("$128 in one day and $600 in a week") got the words between them fed to
+  // KaTeX as a math expression - bare-word "variables" render italic with no inter-token
+  // spacing, which is exactly what looked like a rendering bug (found 2026-09-30, reported
+  // against the cost-briefing doc). Guard the same way Pandoc's tex_math_dollars does: an
+  // opening $ must not be followed by whitespace, a closing $ must not be preceded by
+  // whitespace, and a closing $ must not be immediately followed by a digit (so "$5 and $10"
+  // can't pair the first $ with the second). Prose dollar amounts fail these; real inline
+  // math ($x^2$, $E=mc^2$) passes them.
+  const maths=[]; s=s.replace(/\$(?!\s)([^$\n]*[^\s$])\$(?!\d)/g,(m,c)=>{maths.push(c);return ` M${maths.length-1} `;});
   // backslash escapes (CommonMark 2.4) - the WYSIWYG engine emits "1\." / "\(" / "\," when it serialises;
   // hold them so the emphasis/link passes can't see them, then restore the literal character at the end
   const escs=[]; s=s.replace(/\\([\\`*_{}\[\]()#+\-.!,|~<>$"'])/g,(m,c)=>{escs.push(c);return `\u0001${escs.length-1}\u0001`;});
